@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.2.2
+// @version      2.2.3
 // @description  ChatGPT Session 一键导出 9 种主流格式（auth.json / Codex / CPA / Sub2API / Cockpit / 9router / AxonHub / Codex-Manager / 原始 JSON），并生成 Plus 多区域 + Team 工作区订阅链接。Specimen 设计语言，去 AI 味。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
@@ -25,7 +25,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.2.2';
+  const VERSION = '2.2.3';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -43,14 +43,17 @@
     { id: 'raw-session',   label: 'Raw Session',   filename: 'session.json',       desc: '原始 Session JSON 不变换' },
   ];
 
-  // 注：PayPal 渠道也用 JP/JPY 生成长链 —— 0 元试用资格由 country=JP 触发，
-  // PayPal 仅是支付手段（教程做法：日区长链 → 美国 IP 打开 → 选 PayPal → 填 0 刀美卡）。
-  // 若想要不试用的美区正常订阅，用 us_direct 选项。
+  // 关键认知（已对照 linux.do bdigu 教程 + payurl.ark2.cn 工具截图核对）：
+  //   · 0 元试用资格 = ChatGPT 服务端看请求出口 IP 是日本，与请求体 country 字段无关
+  //   · country/currency 字段 = 决定 pay.openai.com 支付页的 locale + 币种 + 默认显示的支付方式
+  //   · PayPal 在欧元区（DE/FR）页面默认显示，所以走 PayPal 通道要用 country=DE
+  //   · 美区（country=US）页面更偏向卡直付，PayPal 入口隐藏，所以不适合
+  // 用户责任：自己挂日本梯子让出口 IP=JP（脚本无法控制浏览器出口 IP）
   const PLUS_PROFILES = {
-    direct: { label: '日区直绑',     country: 'JP', currency: 'JPY', code: 'JP', note: '0 元试用 · 日卡 / Wise 直绑' },
-    paypal: { label: 'PayPal 美卡',   country: 'JP', currency: 'JPY', code: 'JP', note: '日区长链 + PayPal + 0 刀美卡（教程主推）' },
-    gopay:  { label: 'GoPay 印尼',    country: 'ID', currency: 'IDR', code: 'ID', note: 'GoPay 印尼区 · 教程称已被薅烂封号高发' },
-    us_direct: { label: '美区订阅',  country: 'US', currency: 'USD', code: 'US', note: '正常美区订阅（不参与试用，付全价）' },
+    paypal: { label: 'PayPal · 欧元区', country: 'DE', currency: 'EUR', code: 'DE', note: '教程主推 · 欧元区页面默认显示 PayPal · 配合美卡走 0 刀' },
+    paypal_fr: { label: 'PayPal · 法国',  country: 'FR', currency: 'EUR', code: 'FR', note: '欧元区备选 · 德区拒卡时换法区试' },
+    direct: { label: '日区直绑',      country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（不走 PayPal，需真日卡）' },
+    gopay:  { label: 'GoPay · 印尼',    country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 教程称已被薅烂封号高发' },
   };
 
   function loadSettings() {
@@ -511,9 +514,10 @@
     return '<i class="ic" style="width:' + s + 'px;height:' + s + 'px" aria-hidden="true">' + (SVG[name] || '') + '</i>';
   }
 
-  // CSS · 明亮 SaaS 风格（hvoy.ai 启发 · 得意黑做大标题 · 警告橙做信号）
-  const CSS = [
-    /* @font-face — 得意黑 Smiley Sans 大标题字体 · CSP 失败时静默回退系统衬线 */
+  // 得意黑字体 @font-face：从原本"页面加载即注入"改为"首次打开 modal 才懒注入"。
+  // 否则即使 font-display: swap 不阻塞首帧渲染，浏览器也会立即从 jsDelivr CDN 拉 ~1MB woff2，
+  // 占用 chatgpt.com 的网络连接池，让 ChatGPT 自己的 API 请求排队。
+  const FONT_CSS = [
     '@font-face {',
     '  font-family: "Smiley Sans CKNB";',
     '  font-style: italic;',
@@ -521,6 +525,19 @@
     '  font-display: swap;',
     '  src: url("https://cdn.jsdelivr.net/gh/atelier-anchor/smiley-sans@v2.0.0/dist/SmileySans-Oblique.woff2") format("woff2");',
     '}',
+  ].join('\n');
+  let fontInjected = false;
+  function ensureFont() {
+    if (fontInjected || document.getElementById(NS + '-font')) { fontInjected = true; return; }
+    fontInjected = true;
+    const el = document.createElement('style');
+    el.id = NS + '-font';
+    el.textContent = FONT_CSS;
+    document.head.appendChild(el);
+  }
+
+  // CSS · 明亮 SaaS 风格（hvoy.ai 启发 · 得意黑做大标题 · 警告橙做信号）
+  const CSS = [
     /* root */
     '#' + NS + '-fab, #' + NS + '-modal, #' + NS + '-toast {',
     '  all: initial; box-sizing: border-box;',
@@ -899,7 +916,7 @@
       '    <div class="tutor-icon">' + icon('bolt', 18) + '</div>',
       '    <div class="tutor-body">',
       '      <div class="tutor-title">PayPal 通道 · 不到 3 元拿下 PLUS</div>',
-      '      <div class="tutor-sub">教程汇总 by <b>linux.do · bdigu</b> · 必须用 <b style="color:#ff5722">Visa / Mastercard 美卡</b>，国卡无效</div>',
+      '      <div class="tutor-sub">教程汇总 by <b>linux.do · bdigu</b> · 必须挂 <b style="color:#ff5722">日本梯子</b>拿试用 + <b style="color:#ff5722">Visa / Mastercard 美卡</b>走 PayPal</div>',
       '    </div>',
       '    <button class="btn sm" data-action="plus-tutorial-toggle" aria-expanded="false">',
       '      <span class="tutor-toggle-text">查看完整步骤</span>',
@@ -915,7 +932,7 @@
       (state.plus.loading ? '<span class="spin"></span> 并发生成中…' : (icon('globe', 14) + ' <span>批量生成 ' + Object.keys(PLUS_PROFILES).length + ' 个区域</span>')),
       '  </button>',
       '</div>',
-      '<div class="stat"><b>0 元试用资格由 country=JP 触发</b> · 长链拿到后请用对应区域 IP 打开 · 自动附带 <code>plus-1-month-free</code> 优惠 · 最终支付方式由 ChatGPT / Stripe 决定</div>',
+      '<div class="stat"><b>0 元试用资格 = 你浏览器/代理的出口 IP 是日本</b> · 必须自己挂日本梯子 · country 字段只决定支付页 locale 与默认支付方式 · 欧元区显示 PayPal、日区显示 Konbini、美区偏卡直付</div>',
       '<div id="' + NS + '-plus-result" style="margin-top:14px;"></div>',
     ].join('');
   }
@@ -923,8 +940,8 @@
   // PayPal 教程内容（来源：linux.do bdigu 2026-05 帖）
   function renderTutorialDetail() {
     const steps = [
-      { n: '01', t: '日本 IP 打开 ChatGPT', d: '确保 ChatGPT 看到你的出口 IP 是日本（用日本梯子 / VPN）。这是 0 元试用资格的服务端规则触发条件。' },
-      { n: '02', t: '生成日区长链', d: '在脚本中选「PayPal 美卡」（country=JP, currency=JPY），点击生成 → 复制 OpenAI 长链。<b style="color:#ff5722">不要短链直付，会被拒</b>。' },
+      { n: '01', t: '挂日本代理 / VPN', d: '让 ChatGPT 看到你的出口 IP 是 <b>日本</b>。这是 0 元试用资格的<b>唯一</b>触发条件，与请求体 country 字段无关。可用日本家宽 / 日本梯子。' },
+      { n: '02', t: '生成长链', d: '脚本中选「PayPal · 欧元区」（country=DE, currency=EUR），点击生成 → 复制 OpenAI 长链。<b style="color:#ff5722">试用资格已被你日本代理 IP 触发，country 选欧元区是为了支付页默认显示 PayPal</b>。不要短链直付。' },
       { n: '03', t: '指纹浏览器 + 美国家宽 IP 打开长链', d: '换到指纹浏览器（AdsPower / 比特等）+ 纯净美国家宽 IP，IP 所在州要和你的 0 刀美卡州一致。' },
       { n: '04', t: '在 pay.openai.com 选 PayPal', d: '不要直接填卡，<b style="color:#ff5722">大部分 0 刀卡会被直接拒</b>。一定选 PayPal 支付。' },
       { n: '05', t: '填账单地址', d: '填焚决地址（不必跟卡地址一致，按下方地址表选对应州的）。' },
@@ -1102,6 +1119,7 @@
     if (state.activeTab === 'team' && state.team.lastLinks) renderTeamResult(state.team.lastLinks);
   }
   function openModal() {
+    ensureFont();  // 首次打开 modal 才懒加载得意黑字体，避免页面加载时占用 chatgpt.com 连接池
     ensureModal();
     refreshBody();
     document.getElementById(NS + '-modal').setAttribute('data-open', 'true');
