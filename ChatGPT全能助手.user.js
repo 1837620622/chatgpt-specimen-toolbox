@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.2.3
+// @version      2.2.4
 // @description  ChatGPT Session 一键导出 9 种主流格式（auth.json / Codex / CPA / Sub2API / Cockpit / 9router / AxonHub / Codex-Manager / 原始 JSON），并生成 Plus 多区域 + Team 工作区订阅链接。Specimen 设计语言，去 AI 味。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
@@ -25,7 +25,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.2.3';
+  const VERSION = '2.2.4';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -33,10 +33,10 @@
 
   const EXPORT_TARGETS = [
     { id: 'auth',          label: 'auth.json',     filename: 'auth.json',          desc: 'Codex CLI 原生' },
+    { id: 'cockpit',       label: 'Cockpit',       filename: 'cockpit.json',       desc: 'Cockpit Tools 完整 tokens 嵌套格式' },
     { id: 'codex',         label: 'Codex Auth',    filename: 'codex-auth.json',    desc: '重组 id_token 含 email/profile' },
     { id: 'cpa',           label: 'CPA',           filename: 'cpa.json',           desc: 'CLI Proxy API 中转格式' },
     { id: 'sub2api',       label: 'Sub2API',       filename: 'sub2api.json',       desc: 'CPA2sub2API 项目格式' },
-    { id: 'cockpit',       label: 'Cockpit',       filename: 'cockpit.json',       desc: 'Cockpit Tools 扁平格式' },
     { id: '9router',       label: '9router',       filename: '9router.json',       desc: '9router Codex OAuth 格式' },
     { id: 'axonhub',       label: 'AxonHub',       filename: 'axonhub-auth.json',  desc: 'AxonHub Codex auth.json' },
     { id: 'codex-manager', label: 'Codex-Manager', filename: 'codex-manager.json', desc: 'Codex-Manager 批量导入' },
@@ -329,13 +329,27 @@
     }).filter(([_, v]) => v !== undefined && v !== null));
   }
   function buildCockpit(ctx) {
-    return Object.fromEntries(Object.entries({
-      type: 'codex',
-      id_token: ctx.codexIdToken,
-      access_token: ctx.accessToken, refresh_token: ctx.refreshToken || '',
-      account_id: ctx.accountId, last_refresh: ctx.exportedAt,
-      email: ctx.email, expired: ctx.expiresAt,
-    }).filter(([_, v]) => v !== undefined && v !== null));
+    // Cockpit 实际接受的导入格式（用户提供 2026-05 最新版）：
+    //   完整 tokens 嵌套结构 + id/email/created_at/last_used 元信息
+    //   旧版扁平 token 字段（如 v2.0 写的那种）已不被识别
+    const nowSec = Math.floor(ctx.now.getTime() / 1000);
+    const idSuffix = ctx.accountId
+      || (ctx.email ? toEmailKey(ctx.email) : null)
+      || String(nowSec);
+    return {
+      id: 'codex_' + idSuffix,
+      email: ctx.email || '',
+      tokens: {
+        id_token: ctx.codexIdToken || '',
+        access_token: ctx.accessToken,
+        refresh_token: ctx.refreshToken || '',
+      },
+      account_id: ctx.accountId,
+      last_refresh: ctx.exportedAt,
+      expired: ctx.expiresAt,
+      created_at: nowSec,
+      last_used: nowSec,
+    };
   }
   function buildSub2api(ctx) {
     const acc = strip({
