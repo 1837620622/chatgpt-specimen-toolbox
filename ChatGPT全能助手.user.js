@@ -712,6 +712,7 @@
     '#' + NS + '-modal .tutor-hd { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }',
     '#' + NS + '-modal .tutor-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: #ff5722; color: #ffffff; border-radius: 8px; }',
     '#' + NS + '-modal .tutor-icon .ic { width: 18px; height: 18px; }',
+    '#' + NS + '-modal .tutor-body { min-width: 0; }',
     '#' + NS + '-modal .tutor-title { font-size: 15px; font-weight: 700; color: #1a1614; margin-bottom: 2px; font-family: "Smiley Sans CKNB", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif; font-style: italic; }',
     '#' + NS + '-modal .tutor-sub { font-size: 12px; color: #6b6660; line-height: 1.45; }',
     '#' + NS + '-modal .tutor-detail { margin-top: 14px; padding-top: 14px; border-top: 1px dashed #ffd9c4; }',
