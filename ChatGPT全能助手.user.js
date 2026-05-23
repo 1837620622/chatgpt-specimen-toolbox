@@ -707,6 +707,50 @@
     '#' + NS + '-toast[data-type="success"] { border-left-color: #16a34a; }',
     '#' + NS + '-toast[data-type="error"] { border-left-color: #dc2626; }',
 
+    /* ─── 教程横幅 ─── */
+    '#' + NS + '-modal .tutor { background: linear-gradient(180deg, #fffbf5 0%, #ffffff 100%); border: 1px solid #ffd9c4; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }',
+    '#' + NS + '-modal .tutor-hd { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }',
+    '#' + NS + '-modal .tutor-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: #ff5722; color: #ffffff; border-radius: 8px; }',
+    '#' + NS + '-modal .tutor-icon .ic { width: 18px; height: 18px; }',
+    '#' + NS + '-modal .tutor-title { font-size: 15px; font-weight: 700; color: #1a1614; margin-bottom: 2px; font-family: "Smiley Sans CKNB", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif; font-style: italic; }',
+    '#' + NS + '-modal .tutor-sub { font-size: 12px; color: #6b6660; line-height: 1.45; }',
+    '#' + NS + '-modal .tutor-detail { margin-top: 14px; padding-top: 14px; border-top: 1px dashed #ffd9c4; }',
+    '#' + NS + '-modal .tutor-detail[hidden] { display: none; }',
+
+    /* 警告区 */
+    '#' + NS + '-modal .tutor-warn { padding: 12px 14px; background: #fff8f3; border: 1px solid #ffd9c4; border-left: 3px solid #ff5722; border-radius: 6px; margin-bottom: 16px; }',
+    '#' + NS + '-modal .tutor-warn-title { font-size: 12px; font-weight: 700; color: #ff5722; letter-spacing: 0.04em; margin-bottom: 8px; }',
+    '#' + NS + '-modal .tutor-warn-list { list-style: none; padding: 0; margin: 0; }',
+    '#' + NS + '-modal .tutor-warn-list li { font-size: 12px; color: #1a1614; padding: 3px 0 3px 16px; position: relative; line-height: 1.5; }',
+    '#' + NS + '-modal .tutor-warn-list li::before { content: "▸"; color: #ff5722; position: absolute; left: 0; font-size: 10px; top: 5px; }',
+    '#' + NS + '-modal .tutor-warn-list b { color: #1a1614; font-weight: 700; }',
+
+    /* 步骤 */
+    '#' + NS + '-modal .tutor-steps { display: flex; flex-direction: column; gap: 0; margin-bottom: 18px; }',
+    '#' + NS + '-modal .tutor-step { display: grid; grid-template-columns: 40px 1fr; gap: 14px; padding: 12px 0; border-bottom: 1px dashed #f0eeea; }',
+    '#' + NS + '-modal .tutor-step:last-child { border-bottom: 0; }',
+    '#' + NS + '-modal .tutor-step-num { font: 700 18px/1 "Smiley Sans CKNB", "PingFang SC", system-ui, sans-serif; font-style: italic; color: #ff5722; padding-top: 1px; }',
+    '#' + NS + '-modal .tutor-step-text { min-width: 0; }',
+    '#' + NS + '-modal .tutor-step-title { font-size: 13px; font-weight: 700; color: #1a1614; margin-bottom: 4px; }',
+    '#' + NS + '-modal .tutor-step-desc { font-size: 12px; line-height: 1.55; color: #6b6660; }',
+    '#' + NS + '-modal .tutor-step-desc b { color: #1a1614; }',
+
+    /* 章节标题 */
+    '#' + NS + '-modal .tutor-section-title { font-size: 12px; font-weight: 700; color: #6b6660; letter-spacing: 0.04em; margin: 16px 0 10px; padding-left: 10px; border-left: 3px solid #ff5722; }',
+
+    /* 地址 */
+    '#' + NS + '-modal .tutor-addrs { display: grid; gap: 6px; margin-bottom: 14px; }',
+    '#' + NS + '-modal .tutor-addr { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 8px 12px; background: #fafaf8; border: 1px solid #f0eeea; border-radius: 6px; font: 12px/1.4 ui-monospace, "SF Mono", Consolas, monospace; }',
+    '#' + NS + '-modal .tutor-addr-state { color: #ff5722; font-weight: 700; }',
+
+    /* 排查 */
+    '#' + NS + '-modal .tutor-debugs { display: grid; gap: 8px; margin-bottom: 14px; }',
+    '#' + NS + '-modal .tutor-debug { display: grid; grid-template-columns: 200px 1fr; gap: 14px; padding: 10px 12px; background: #fff8f3; border: 1px solid #ffd9c4; border-radius: 6px; font-size: 12px; line-height: 1.55; }',
+    '#' + NS + '-modal .tutor-debug-tag { color: #ff5722; font-weight: 700; }',
+
+    /* 教程页脚 */
+    '#' + NS + '-modal .tutor-footer { font-size: 11px; color: #aaa5a0; text-align: right; padding-top: 8px; border-top: 1px dashed #f0eeea; }',
+
     /* ─── 响应式 ─── */
     '@media (max-width: 560px) {',
     '  #' + NS + '-modal .dlg { width: calc(100vw - 16px); border-radius: 10px; }',
@@ -718,6 +762,10 @@
     '  #' + NS + '-modal .regions { grid-template-columns: 1fr; }',
     '  #' + NS + '-modal .grid2 { grid-template-columns: 1fr; }',
     '  #' + NS + '-fab { right: 16px; bottom: 16px; padding: 8px 14px 8px 11px; font-size: 13px; }',
+    '  #' + NS + '-modal .tutor-hd { grid-template-columns: auto 1fr; }',
+    '  #' + NS + '-modal .tutor-hd .btn { grid-column: 1 / -1; margin-top: 8px; }',
+    '  #' + NS + '-modal .tutor-debug { grid-template-columns: 1fr; }',
+    '  #' + NS + '-modal .tutor-step { grid-template-columns: 32px 1fr; gap: 10px; }',
     '}',
   ].join('\n');
   function ensureStyle() {
@@ -844,15 +892,92 @@
       ].join('');
     }).join('');
     return [
+      // 教程横幅 + 展开详情
+      '<div class="tutor">',
+      '  <div class="tutor-hd">',
+      '    <div class="tutor-icon">' + icon('bolt', 18) + '</div>',
+      '    <div class="tutor-body">',
+      '      <div class="tutor-title">PayPal 通道 · 不到 3 元拿下 PLUS</div>',
+      '      <div class="tutor-sub">教程汇总 by <b>linux.do · bdigu</b> · 必须用 <b style="color:#ff5722">Visa / Mastercard 美卡</b>，国卡无效</div>',
+      '    </div>',
+      '    <button class="btn sm" data-action="plus-tutorial-toggle" aria-expanded="false">',
+      '      <span class="tutor-toggle-text">查看完整步骤</span>',
+      '    </button>',
+      '  </div>',
+      '  <div class="tutor-detail" id="' + NS + '-tutor-detail" hidden></div>',
+      '</div>',
+
       '<div class="lbl">选择支付区域<span class="hint">单选 / 批量</span></div>',
       '<div class="regions">' + regions + '</div>',
       '<div class="acts">',
       '  <button class="btn primary" data-action="plus-generate-all" ' + (state.plus.loading ? 'disabled' : '') + '>',
-      (state.plus.loading ? '<span class="spin"></span> 并发生成中…' : (icon('globe', 14) + ' <span>批量生成 3 个区域</span>')),
+      (state.plus.loading ? '<span class="spin"></span> 并发生成中…' : (icon('globe', 14) + ' <span>批量生成 ' + Object.keys(PLUS_PROFILES).length + ' 个区域</span>')),
       '  </button>',
       '</div>',
       '<div class="stat"><b>0 元试用资格由 country=JP 触发</b> · 长链拿到后请用对应区域 IP 打开 · 自动附带 <code>plus-1-month-free</code> 优惠 · 最终支付方式由 ChatGPT / Stripe 决定</div>',
       '<div id="' + NS + '-plus-result" style="margin-top:14px;"></div>',
+    ].join('');
+  }
+
+  // PayPal 教程内容（来源：linux.do bdigu 2026-05 帖）
+  function renderTutorialDetail() {
+    const steps = [
+      { n: '01', t: '日本 IP 打开 ChatGPT', d: '确保 ChatGPT 看到你的出口 IP 是日本（用日本梯子 / VPN）。这是 0 元试用资格的服务端规则触发条件。' },
+      { n: '02', t: '生成日区长链', d: '在脚本中选「PayPal 美卡」（country=JP, currency=JPY），点击生成 → 复制 OpenAI 长链。<b style="color:#ff5722">不要短链直付，会被拒</b>。' },
+      { n: '03', t: '指纹浏览器 + 美国家宽 IP 打开长链', d: '换到指纹浏览器（AdsPower / 比特等）+ 纯净美国家宽 IP，IP 所在州要和你的 0 刀美卡州一致。' },
+      { n: '04', t: '在 pay.openai.com 选 PayPal', d: '不要直接填卡，<b style="color:#ff5722">大部分 0 刀卡会被直接拒</b>。一定选 PayPal 支付。' },
+      { n: '05', t: '填账单地址', d: '填焚决地址（不必跟卡地址一致，按下方地址表选对应州的）。' },
+      { n: '06', t: '注册新 PayPal 邮箱', d: '<b style="color:#ff5722">不要填你真实的 PayPal 邮箱</b>！瞎填一个全新邮箱，下一步会自动开新 PayPal 账户。' },
+      { n: '07', t: '填 0 刀美卡（Visa / Mastercard）', d: '<b style="color:#ff5722">必须是 Visa 或 Mastercard 美卡</b>，国卡 / Amex / Discover 都不行。卡商参考 2.5 元 / 张，1.5 元的成功率低。' },
+      { n: '08', t: 'PayPal 接码手机号', d: '用 1.5 元 30 天的接码服务，把手机号填进去，会收到 PayPal 验证码。' },
+      { n: '09', t: '人机验证（可跳）', d: '若出现 Cloudflare 验证页转圈圈，按 F12 直接删掉验证窗口 DOM 元素，不影响后续流程。' },
+      { n: '10', t: '提交支付 → 看到购物袋', d: '看到 ChatGPT 购物袋页面 = 成功开通，邮箱秒收开通邮件。整个流程不到 5 分钟。' },
+    ];
+    const addrs = [
+      ['CA', '1586 29th Ave, San Francisco, CA 94122'],
+      ['TX', '2671 Clayton Oaks Dr, Dallas, TX 75227'],
+      ['FL', '7714 Legacy Ln, Orlando, FL 32818'],
+      ['NC', '1621 Elswick Lane, Charlotte, NC 28214'],
+      ['AZ', '2922 E Le Marche Ave, Phoenix, AZ 85032'],
+    ];
+    const debug = [
+      ['黄标提示 / 跳转 PayPal 风控页', 'IP 问题。查 0 刀卡所在州 → 代理平台换该州 IP → 隐私窗口重试（最好换号生成新长链）'],
+      ['完全失败 / 卡被拒', '卡商问题。把卡丢回卡商群让"手法哥"测试，有人成功 = IP 你的问题，没人成功 = 换卡商'],
+      ['验证码收不到', '换接码服务，或者用号商提供的真实美国手机号'],
+    ];
+    const stepHtml = steps.map(function(s) {
+      return [
+        '<div class="tutor-step">',
+        '  <div class="tutor-step-num">' + s.n + '</div>',
+        '  <div class="tutor-step-text">',
+        '    <div class="tutor-step-title">' + escapeHtml(s.t) + '</div>',
+        '    <div class="tutor-step-desc">' + s.d + '</div>',
+        '  </div>',
+        '</div>',
+      ].join('');
+    }).join('');
+    const addrHtml = addrs.map(function(a) {
+      return '<div class="tutor-addr"><span class="tutor-addr-state">' + a[0] + '</span><span>' + escapeHtml(a[1]) + '</span></div>';
+    }).join('');
+    const debugHtml = debug.map(function(d) {
+      return '<div class="tutor-debug"><span class="tutor-debug-tag">' + escapeHtml(d[0]) + '</span><span>' + escapeHtml(d[1]) + '</span></div>';
+    }).join('');
+    return [
+      '<div class="tutor-warn">',
+      '  <div class="tutor-warn-title">必备物料</div>',
+      '  <ul class="tutor-warn-list">',
+      '    <li><b>0 刀美卡</b>（Visa 或 Mastercard，约 2.5 元 / 张）</li>',
+      '    <li><b>PayPal 接码手机号</b>（约 1.5 元 30 天）</li>',
+      '    <li><b>日本 IP</b>（生成长链时用）+ <b>美国家宽 IP</b>（打开长链时用）</li>',
+      '    <li><b>指纹浏览器</b>（AdsPower / 比特浏览器 / Hidemyacc 等）</li>',
+      '  </ul>',
+      '</div>',
+      '<div class="tutor-steps">' + stepHtml + '</div>',
+      '<div class="tutor-section-title">焚决地址（按 0 刀卡所在州选）</div>',
+      '<div class="tutor-addrs">' + addrHtml + '</div>',
+      '<div class="tutor-section-title">支付失败排查</div>',
+      '<div class="tutor-debugs">' + debugHtml + '</div>',
+      '<div class="tutor-footer">教程来源：<a href="https://linux.do" target="_blank" rel="noopener" style="color:#ff5722">linux.do</a> @bdigu @rsharecn · 2026 年 5 月</div>',
     ].join('');
   }
   function renderTeam() {
@@ -1002,6 +1127,7 @@
       case 'auth-download': return onAuthDownload();
       case 'auth-download-all': return onAuthDownloadAll();
       case 'plus-generate-all': return onPlusGenerateAll();
+      case 'plus-tutorial-toggle': return onPlusTutorialToggle(btn);
       case 'team-generate': return onTeamGenerate();
       case 'team-reset': return onTeamReset();
     }
@@ -1093,6 +1219,25 @@
       toast(e.message || String(e), 'error', 5000);
     }
   }
+  function onPlusTutorialToggle(btn) {
+    const detail = document.getElementById(NS + '-tutor-detail');
+    if (!detail) return;
+    const isOpen = !detail.hasAttribute('hidden');
+    if (isOpen) {
+      detail.setAttribute('hidden', '');
+      detail.innerHTML = '';
+      btn.setAttribute('aria-expanded', 'false');
+      const t = btn.querySelector('.tutor-toggle-text');
+      if (t) t.textContent = '查看完整步骤';
+    } else {
+      detail.innerHTML = renderTutorialDetail();
+      detail.removeAttribute('hidden');
+      btn.setAttribute('aria-expanded', 'true');
+      const t = btn.querySelector('.tutor-toggle-text');
+      if (t) t.textContent = '收起教程';
+    }
+  }
+
   async function onPlusGenerateAll() {
     if (state.plus.loading) return;
     state.plus.loading = true;
