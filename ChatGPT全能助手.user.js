@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.1.0
+// @version      2.0.0
 // @description  ChatGPT Session 一键导出 9 种主流格式（auth.json / Codex / CPA / Sub2API / Cockpit / 9router / AxonHub / Codex-Manager / 原始 JSON），并生成 Plus 多区域 + Team 工作区订阅链接。Specimen 设计语言，去 AI 味。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
@@ -25,7 +25,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.1.0';
+  const VERSION = '2.0.0';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -1232,7 +1232,7 @@
     fab.id = NS + '-fab';
     fab.type = 'button';
     fab.title = 'CKNB ChatGPT 全能助手 · ' + AUTHOR + ' · 拖动可移位';
-    fab.innerHTML = '<i class="ic">' + SVG.sigil + '</i>';
+    fab.innerHTML = '<i class="ic">' + SVG.sigil + '</i><span>工具箱</span>';
     if (Number.isFinite(state.fab.x) && Number.isFinite(state.fab.y)) {
       fab.style.left = state.fab.x + 'px';
       fab.style.top = state.fab.y + 'px';
@@ -1252,8 +1252,10 @@
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true;
       if (!drag.moved) return;
       fab.classList.add('dragging');
-      const x = Math.max(8, Math.min(window.innerWidth - 56, drag.originLeft + dx));
-      const y = Math.max(8, Math.min(window.innerHeight - 56, drag.originTop + dy));
+      const fw = fab.offsetWidth || 48;
+      const fh = fab.offsetHeight || 48;
+      const x = Math.max(8, Math.min(window.innerWidth - fw - 8, drag.originLeft + dx));
+      const y = Math.max(8, Math.min(window.innerHeight - fh - 8, drag.originTop + dy));
       fab.style.left = x + 'px'; fab.style.top = y + 'px';
       fab.style.right = 'auto'; fab.style.bottom = 'auto';
     });
