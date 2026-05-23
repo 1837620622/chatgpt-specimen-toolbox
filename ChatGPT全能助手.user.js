@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.2.1
+// @version      2.2.2
 // @description  ChatGPT Session 一键导出 9 种主流格式（auth.json / Codex / CPA / Sub2API / Cockpit / 9router / AxonHub / Codex-Manager / 原始 JSON），并生成 Plus 多区域 + Team 工作区订阅链接。Specimen 设计语言，去 AI 味。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
@@ -25,7 +25,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.2.1';
+  const VERSION = '2.2.2';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -1389,13 +1389,11 @@
       fab.style.right = 'auto';
       fab.style.bottom = 'auto';
     }
+    // 拖动逻辑：只在 mousedown 期间监听 mousemove/mouseup，结束立刻移除
+    // 不再全局 document.addEventListener('mousemove', ...) — 否则 ChatGPT 鼠标移动时每秒进入函数 60+ 次，
+    // 与 ChatGPT 自身 mousemove handler 叠加会让 main thread 长任务化、click 事件 starve。
     let drag = null;
-    fab.addEventListener('mousedown', function(e) {
-      if (e.button !== 0) return;
-      const r = fab.getBoundingClientRect();
-      drag = { startX: e.clientX, startY: e.clientY, originLeft: r.left, originTop: r.top, moved: false };
-    });
-    document.addEventListener('mousemove', function(e) {
+    function onDocMouseMove(e) {
       if (!drag) return;
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
@@ -1408,10 +1406,14 @@
       const y = Math.max(8, Math.min(window.innerHeight - fh - 8, drag.originTop + dy));
       fab.style.left = x + 'px'; fab.style.top = y + 'px';
       fab.style.right = 'auto'; fab.style.bottom = 'auto';
-    });
-    document.addEventListener('mouseup', function() {
+    }
+    function onDocMouseUp() {
+      // 始终清理 listener，避免泄漏
+      document.removeEventListener('mousemove', onDocMouseMove);
+      document.removeEventListener('mouseup', onDocMouseUp);
       if (!drag) return;
-      const wasMoved = drag.moved; drag = null;
+      const wasMoved = drag.moved;
+      drag = null;
       fab.classList.remove('dragging');
       if (wasMoved) {
         const r = fab.getBoundingClientRect();
@@ -1421,6 +1423,13 @@
       } else {
         openModal();
       }
+    }
+    fab.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      const r = fab.getBoundingClientRect();
+      drag = { startX: e.clientX, startY: e.clientY, originLeft: r.left, originTop: r.top, moved: false };
+      document.addEventListener('mousemove', onDocMouseMove, { passive: true });
+      document.addEventListener('mouseup', onDocMouseUp, { once: true });
     });
     document.body.appendChild(fab);
   }
@@ -1448,8 +1457,16 @@
         if (m && m.getAttribute('data-open') === 'true') closeModal(); else openModal();
       }
     });
+    // MutationObserver 加 debounce：ChatGPT React 频繁动 body 子节点（portal / overlay），
+    // 不 debounce 会让回调每秒跑 100+ 次，main thread 累成长任务。
+    // 1.5s 内最多检查一次 FAB 是否还在；FAB 偶尔慢 1 秒重新出现完全可以接受。
+    let mutTimer = null;
     new MutationObserver(function() {
-      if (!document.getElementById(NS + '-fab')) ensureFab();
+      if (mutTimer) return;
+      mutTimer = setTimeout(function() {
+        mutTimer = null;
+        if (!document.getElementById(NS + '-fab')) ensureFab();
+      }, 1500);
     }).observe(document.body, { childList: true, subtree: false });
   }
   init();
