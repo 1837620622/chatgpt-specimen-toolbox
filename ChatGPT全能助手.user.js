@@ -43,10 +43,14 @@
     { id: 'raw-session',   label: 'Raw Session',   filename: 'session.json',       desc: '原始 Session JSON 不变换' },
   ];
 
+  // 注：PayPal 渠道也用 JP/JPY 生成长链 —— 0 元试用资格由 country=JP 触发，
+  // PayPal 仅是支付手段（教程做法：日区长链 → 美国 IP 打开 → 选 PayPal → 填 0 刀美卡）。
+  // 若想要不试用的美区正常订阅，用 us_direct 选项。
   const PLUS_PROFILES = {
-    direct: { label: '直绑 · Japan',         country: 'JP', currency: 'JPY', code: 'JP' },
-    gopay:  { label: 'GoPay · Indonesia',     country: 'ID', currency: 'IDR', code: 'ID' },
-    paypal: { label: 'PayPal · United States', country: 'US', currency: 'USD', code: 'US' },
+    direct: { label: '日区直绑',     country: 'JP', currency: 'JPY', code: 'JP', note: '0 元试用 · 日卡 / Wise 直绑' },
+    paypal: { label: 'PayPal 美卡',   country: 'JP', currency: 'JPY', code: 'JP', note: '日区长链 + PayPal + 0 刀美卡（教程主推）' },
+    gopay:  { label: 'GoPay 印尼',    country: 'ID', currency: 'IDR', code: 'ID', note: 'GoPay 印尼区 · 教程称已被薅烂封号高发' },
+    us_direct: { label: '美区订阅',  country: 'US', currency: 'USD', code: 'US', note: '正常美区订阅（不参与试用，付全价）' },
   };
 
   function loadSettings() {
@@ -659,7 +663,7 @@
     '#' + NS + '-modal .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }',
 
     /* ─── 区域卡片 ─── */
-    '#' + NS + '-modal .regions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }',
+    '#' + NS + '-modal .regions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }',
     '#' + NS + '-modal .region { padding: 18px 16px; cursor: pointer; text-align: left; background: #ffffff; color: #1a1614; border: 1px solid #e8e6e0; border-radius: 10px; transition: all .14s ease-out; font-family: inherit; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; }',
     '#' + NS + '-modal .region:hover { border-color: #ff5722; background: #fef4f1; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,87,34,.12); }',
     '#' + NS + '-modal .region-code { font-size: 11px; letter-spacing: 0.1em; color: #aaa5a0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-weight: 600; }',
@@ -835,7 +839,7 @@
         '<button class="region" data-plus-region="' + k + '">',
         '  <div class="region-code">' + p.code + ' · ' + p.currency + '</div>',
         '  <div class="region-label">' + escapeHtml(p.label) + '</div>',
-        '  <div class="region-meta">' + p.country + ' 区域账单</div>',
+        '  <div class="region-meta">' + escapeHtml(p.note || (p.country + ' 区域账单')) + '</div>',
         '</button>',
       ].join('');
     }).join('');
@@ -847,7 +851,7 @@
       (state.plus.loading ? '<span class="spin"></span> 并发生成中…' : (icon('globe', 14) + ' <span>批量生成 3 个区域</span>')),
       '  </button>',
       '</div>',
-      '<div class="stat">仅修改 billing country / currency · 自动附带 <b>plus-1-month-free</b> 优惠 · 最终支付方式由 ChatGPT / Stripe 决定</div>',
+      '<div class="stat"><b>0 元试用资格由 country=JP 触发</b> · 长链拿到后请用对应区域 IP 打开 · 自动附带 <code>plus-1-month-free</code> 优惠 · 最终支付方式由 ChatGPT / Stripe 决定</div>',
       '<div id="' + NS + '-plus-result" style="margin-top:14px;"></div>',
     ].join('');
   }
