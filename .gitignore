@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node (in case future build added)
+node_modules/
+package-lock.json
+
+# Backups
+*.bak
+*.bak2
+*.orig
+
+# OS / archives
+*.log
+*.cache
