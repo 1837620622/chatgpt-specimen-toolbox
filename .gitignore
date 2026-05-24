@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node (in case future build added)
+node_modules/
+package-lock.json
+
+# Backups
+*.bak
+*.bak2
+*.orig
+
+# OS / archives
+*.log
+*.cache
+
+# v2.3 发布新增（注意：.gitignore 不支持行内注释，必须独立行）
+# 导入样本：⚠️ 含真实 access_token JWT 与账户身份，绝不公开
+导入样本/
+# 旧测试文本，不再使用
+team.txt
+# 与本仓库无关的破解类脚本
+claude- cracked.py
+# 本发布脚本本身，发布后无需进 repo
+.publish_plan.sh

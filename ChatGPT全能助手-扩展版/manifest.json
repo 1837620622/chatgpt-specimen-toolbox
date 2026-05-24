@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT 全能助手 · Specimen",
+  "version": "2.3.0",
+  "description": "ChatGPT Session 一键导出 9 种主流格式 + 反向导入：粘贴任意 JSON 自动识别 11 种来源并互转所有格式；并生成 Plus 多区域 + Team 工作区订阅链接。",
+  "author": "传康KK-CKNB",
+  "homepage_url": "https://github.com/1837620622",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "ChatGPT 全能助手 · Specimen",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "contextMenus",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "cknb-chatgpt-toolbox@1837620622.github.io",
+      "strict_min_version": "121.0"
+    }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoQjuKtw6ZBXGC6Q5upFYeKJ9jFb+bBf9+7q7S4+hnk1SylTf8ijEvCUn3LtbmtQUKK/cuvxKmpvlI8YdsRHBmR0ODSySxs/lPZPV7CQvM678ksZy6Elwag/E7ap/lEKKzvuUwMGv55Uje31oIGnYyZLvX/M0dis36/vACUbTWHkBLtWttjT/19DlQYmLkZ5LZoCGwsLa9rtcm9npELFgv9Wirk+NERbJ3/WMFSrBZq9jB90TJzYt5n620Na7i09fMaoM4OVULcx5+XOhChIvD0odsWjEHewf1qiHxMHkAv6pwspi5pWvvi6xP8OspbQVAneZ0skF11rL/Jfzcmp9GwIDAQAB"
+}
