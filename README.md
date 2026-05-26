@@ -14,7 +14,7 @@
 
 <br>
 
-[![version](https://img.shields.io/badge/版本-2.3.0-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
+[![version](https://img.shields.io/badge/版本-2.3.3-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
 [![tampermonkey](https://img.shields.io/badge/Tampermonkey-required-16a34a?style=for-the-badge&labelColor=1a1614)](https://www.tampermonkey.net/)
 [![license](https://img.shields.io/badge/许可证-MIT-6b6660?style=for-the-badge&labelColor=1a1614)](./LICENSE)
 [![target](https://img.shields.io/badge/目标域名-chatgpt.com-2563eb?style=for-the-badge&labelColor=1a1614)](https://chatgpt.com)
@@ -38,6 +38,7 @@
 | **跨工具迁移** | 朋友给了一份 Sub2API 包，你需要的是 Cockpit / auth.json —— **导入·转换 Tab** 一秒搞定 |
 | **iCloud 备份恢复** | iCloud 同步备份里的 `accounts_*.json` 直接拖进来识别为 Sub2API，按需输出 |
 | **订阅体验** | 频繁拉起 Plus / Team 订阅 checkout 的研究 / 体验工作 |
+| **代付 / 帮别号生成** | 粘贴朋友的 access_token，自定义 Session 模式给别号生成支付链接（payurl.ark2.cn 同款用法） |
 | **去网页转换** | 厌倦"网页转换器 → 粘贴 → 跑一次"重复操作的玩家 |
 
 ---
@@ -135,17 +136,66 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 
 ## 四 · 订阅链接生成
 
-### 4.1 ChatGPT Plus · 多区域
+> v2.3.3 重写。请求体逐字段对齐 ChatGPT 网页内置 Plus / Team 升级弹窗，参考 [QLHazyCoder/FlowPilot](https://github.com/QLHazyCoder/FlowPilot)（⭐4442 · 2026-05-25 v2.5）+ [DanOps-1/Gpt-Agreement-Payment](https://github.com/DanOps-1/Gpt-Agreement-Payment)（⭐1785 · 2026-05-25）的最新实现。
 
-| 区域 | 国家 | 币种 | 备注 |
-|:--|:--:|:--:|:--|
-| **直绑**  | JP | JPY | 日本区直连，可绑信用卡 |
-| **GoPay** | ID | IDR | 印尼区，门槛最低 |
-| **PayPal** | US | USD | 美区，PayPal 友好 |
+### 4.1 ChatGPT Plus · 12 个区域预设 + 自定义
 
-> 一键并发生成 3 个区域 · 自动附带 `plus-1-month-free` 优惠活动 · 最终支付方式由 ChatGPT / Stripe 决定
+| 编号 | 区域 | 国家 | 币种 | PayPal 入口 | 备注 |
+|:--:|:--|:--:|:--:|:--:|:--|
+| 01 | **PayPal · 德国**   | DE | EUR | ✓ | 教程主推 · 欧元区首选 · 0 刀薅最稳 |
+| 02 | **PayPal · 法国**   | FR | EUR | ✓ | 欧元区备选 · 德区拒卡时优先换法区 |
+| 03 | **PayPal · 意大利** | IT | EUR | ✓ | 欧元区备选 · 2026 新增 |
+| 04 | **PayPal · 西班牙** | ES | EUR | ✓ | 西卡友好 |
+| 05 | **PayPal · 荷兰**   | NL | EUR | ✓ | iDEAL + PayPal |
+| 06 | **PayPal · 比利时** | BE | EUR | ✓ | Bancontact 区 |
+| 07 | **PayPal · 奥地利** | AT | EUR | ✓ | EPS 区 |
+| 08 | **PayPal · 葡萄牙** | PT | EUR | ✓ | 冷门可用 |
+| 09 | **PayPal · 爱尔兰** | IE | EUR | ✓ | 英语界面 |
+| 10 | **PayPal · 英国**   | GB | GBP | ✓ | 英镑区 · PayPal 也常出现 |
+| 11 | **日区直绑**         | JP | JPY | – | 日卡 / Wise 直绑（不走 PayPal，需真日卡） |
+| 12 | **GoPay · 印尼**     | ID | IDR | – | 印尼区 GoPay · 教程称已被薅烂封号高发 |
 
-### 4.2 ChatGPT Team · 工作区订阅
+> OpenAI / Stripe 会定期调整 country → 支付方式映射。**某国当下没 PayPal 入口不代表脚本坏**，依次试欧元区其他国家即可。
+
+**三种生成模式**：
+
+```
+单区域生成（点单个区域卡片）
+    ↓
+12 区域全量批量（"批量生成 12 个区域"按钮）
+    ↓
+仅欧元区 PayPal 池（"仅批量欧元区 PayPal 池"按钮 · 9 国并发 · 找 PayPal 专用）
+    ↓
+自定义 country / currency（输入任意 ISO 2 + ISO 3 字母代码）
+```
+
+### 4.2 自定义 Session 模式（v2.3.3 新增 · payurl.ark2.cn 同款用法）
+
+不局限于「当前登录账号」—— 在 Plus Tab 顶部「Session 来源」切换器选「自定义 Session」，粘贴任意账号的 token 即可生成。
+
+**支持四种粘贴形态自动识别**：
+
+| 形态 | 示例 | 自动处理 |
+|:--|:--|:--|
+| 纯 JWT | `eyJ...xxx.yyy.zzz` | 直接用 |
+| 带 Bearer 前缀 | `Bearer eyJ...` | 自动去前缀 |
+| 整段 session JSON | `{"accessToken": "eyJ..."}` | 自动提取 accessToken 字段 |
+| auth.json / Sub2API / CPA 等格式 | `{"tokens": {"access_token": "eyJ..."}}` | 自动从嵌套字段挖（与第三章导入器复用同款逻辑）|
+
+**持久化**：粘贴的 token 自动保存到 localStorage（你自己的浏览器本地），下次打开还能用，不必重粘。
+
+### 4.3 ⚠️ 双链返回机制（v2.3.3 关键修复）
+
+每次生成会**同时返回两条链接**，按你的使用场景选用：
+
+| 链接类型 | 示例 | 适用场景 |
+|:--|:--|:--|
+| **① 外部 Stripe 长链** | `https://pay.openai.com/c/pay/cs_live_xxx#fid=xxx` | **standalone 不依赖任何 cookie** · 在指纹浏览器 / 美国 IP / 任意干净环境打开 · **用户主要场景**（薅 PayPal 试用、帮别人付款）|
+| **② 内部 ChatGPT 短链** | `https://chatgpt.com/checkout/openai_ie/cs_live_xxx` | 仅当前登录账号当前浏览器可用 · session cookie 自动认证 · 备选 |
+
+> **v2.3.2 → v2.3.3 关键变更**：v2.3.2 错误地用 `checkout_ui_mode: 'custom'` 只返回 chatgpt.com 内部链接 —— 用户在指纹浏览器干净环境打开时因为没 ChatGPT session 而到最后**无法付款**。v2.3.3 改回 `'hosted'` 模式返回 standalone Stripe 长链，同时从同一个 `checkout_session_id` 拼出内部 wrapper 短链作为备选。**两条同时给，按场景选**。
+
+### 4.4 ChatGPT Team · 工作区订阅
 
 | 配置项 | 说明 |
 |:--|:--|
@@ -154,8 +204,32 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 | **计费周期** | 按月 / 按年切换 |
 | **优惠码** | 默认留空（满网优惠码每天都在失效，强烈建议自行从 linux.do / 蓝灯查最新） |
 | **国家 / 币种** | 默认 US / USD，可改 |
+| **Session 来源** | 与 Plus 共享 · 切到自定义后 Team 也用粘贴的 token 生成 |
 
-> 生成 OpenAI 托管链接 + Stripe 直链，两份链接同时复制 / 打开。
+> Team 也支持双链：openai / stripe 两个域名镜像同时复制 / 打开。
+
+### 4.5 请求体字段对照（开发者参考）
+
+```js
+// v2.3.3 最终请求体（hosted 模式 · 标准答案）
+{
+  entry_point: 'all_plans_pricing_modal',         // 或 'team_workspace_purchase_modal'
+  plan_name: 'chatgptplusplan',                   // 或 'chatgptteamplan'
+  checkout_ui_mode: 'hosted',                     // ← 决定性字段，'hosted' 才能拿外部 Stripe 长链
+  billing_details: { country: 'DE', currency: 'EUR' },
+  cancel_url: 'https://chatgpt.com/#pricing',
+  promo_campaign: {
+    promo_campaign_id: 'plus-1-month-free',
+    is_coupon_from_query_param: false
+  },
+  // Team 还需要 team_plan_data: { workspace_name, price_interval, seat_quantity }
+}
+```
+
+**字段黑名单（不要加，会污染默认行为）**：
+- ❌ `success_url` — 让 OpenAI 后端自己注入（含 `{CHECKOUT_SESSION_ID}` 占位符）
+- ❌ `locale` — 跟随浏览器
+- ❌ `check_card_proxy` — 旧 API 字段，已过时
 
 ---
 
