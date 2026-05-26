@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.3.0
-// @description  ChatGPT Session 一键导出 9 种主流格式（auth.json / Codex / CPA / Sub2API / Cockpit / 9router / AxonHub / Codex-Manager / 原始 JSON）+ 反向导入：粘贴任意 JSON 文件自动识别并互转所有格式；并生成 Plus 多区域 + Team 工作区订阅链接。Specimen 设计语言，去 AI 味。
+// @version      2.3.2
+// @description  ChatGPT Session 一键导出 9 种主流格式 + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.3.2 修复：PayPal 长链支付完无法回调订阅 finalize 的 bug（改用 checkout_ui_mode:'custom' + chatgpt.com 自托管 wrapper）。Specimen 设计语言，去 AI 味。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -25,7 +25,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.2.4';
+  const VERSION = '2.3.2';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -70,14 +70,28 @@
   // 关键认知（已对照 linux.do bdigu 教程 + payurl.ark2.cn 工具截图核对）：
   //   · 0 元试用资格 = ChatGPT 服务端看请求出口 IP 是日本，与请求体 country 字段无关
   //   · country/currency 字段 = 决定 pay.openai.com 支付页的 locale + 币种 + 默认显示的支付方式
-  //   · PayPal 在欧元区（DE/FR）页面默认显示，所以走 PayPal 通道要用 country=DE
+  //   · PayPal 在欧元区国家页面默认显示，所以走 PayPal 通道要用欧元区 country
   //   · 美区（country=US）页面更偏向卡直付，PayPal 入口隐藏，所以不适合
+  //   · 重要：OpenAI / Stripe 后端会定期调整「country → 可用支付方式」映射，
+  //     某天 DE/FR 没 PayPal 了不代表脚本坏，换其他欧元区国家或自定义即可。
   // 用户责任：自己挂日本梯子让出口 IP=JP（脚本无法控制浏览器出口 IP）
   const PLUS_PROFILES = {
-    paypal: { label: 'PayPal · 欧元区', country: 'DE', currency: 'EUR', code: 'DE', note: '教程主推 · 欧元区页面默认显示 PayPal · 配合美卡走 0 刀' },
-    paypal_fr: { label: 'PayPal · 法国',  country: 'FR', currency: 'EUR', code: 'FR', note: '欧元区备选 · 德区拒卡时换法区试' },
-    direct: { label: '日区直绑',      country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（不走 PayPal，需真日卡）' },
-    gopay:  { label: 'GoPay · 印尼',    country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 教程称已被薅烂封号高发' },
+    // ─── 欧元区 PayPal 备选池 ─────────────────────────────────────
+    //   全部用 EUR 币种，理论上每个国家的 hosted checkout 页面都会
+    //   显示 PayPal。当 OpenAI / Stripe 临时调整某国时换下一国即可。
+    paypal_de: { label: 'PayPal · 德国',     country: 'DE', currency: 'EUR', code: 'DE', note: '教程主推 · 欧元区首选 · 0 刀薅最稳' },
+    paypal_fr: { label: 'PayPal · 法国',     country: 'FR', currency: 'EUR', code: 'FR', note: '欧元区备选 · 德区拒卡时优先换法区' },
+    paypal_it: { label: 'PayPal · 意大利',   country: 'IT', currency: 'EUR', code: 'IT', note: '欧元区备选 · 2026 新增' },
+    paypal_es: { label: 'PayPal · 西班牙',   country: 'ES', currency: 'EUR', code: 'ES', note: '欧元区备选 · 西卡友好' },
+    paypal_nl: { label: 'PayPal · 荷兰',     country: 'NL', currency: 'EUR', code: 'NL', note: '欧元区备选 · iDEAL + PayPal' },
+    paypal_be: { label: 'PayPal · 比利时',   country: 'BE', currency: 'EUR', code: 'BE', note: '欧元区备选 · Bancontact 区' },
+    paypal_at: { label: 'PayPal · 奥地利',   country: 'AT', currency: 'EUR', code: 'AT', note: '欧元区备选 · EPS 区' },
+    paypal_pt: { label: 'PayPal · 葡萄牙',   country: 'PT', currency: 'EUR', code: 'PT', note: '欧元区备选 · 冷门可用' },
+    paypal_ie: { label: 'PayPal · 爱尔兰',   country: 'IE', currency: 'EUR', code: 'IE', note: '欧元区备选 · 英语界面' },
+    // ─── 非 PayPal 通道 ──────────────────────────────────────────
+    direct:    { label: '日区直绑 · JPY',    country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（不走 PayPal，需真日卡）' },
+    gopay:     { label: 'GoPay · 印尼',      country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 教程称已被薅烂封号高发' },
+    paypal_gb: { label: 'PayPal · 英国',     country: 'GB', currency: 'GBP', code: 'GB', note: '英镑区 · PayPal 也常出现' },
   };
 
   function loadSettings() {
@@ -97,7 +111,12 @@
   const state = {
     activeTab: persisted.activeTab || 'auth',
     auth: { exports: null, ctx: null, currentTargetId: 'auth', loading: false },
-    plus: { lastUrl: '', bulkResults: null, loading: false },
+    plus: {
+      lastUrl: '', bulkResults: null, loading: false,
+      // 自定义 country/currency 输入框（持久化，方便用户记住最近一次试的组合）
+      customCountry: persisted.plusCustomCountry || '',
+      customCurrency: persisted.plusCustomCurrency || '',
+    },
     team: {
       lastLinks: null, loading: false,
       form: persisted.teamForm || {
@@ -988,38 +1007,157 @@
     if (!t) throw new Error('没有拿到 accessToken，请确认已登录 ChatGPT。');
     return t;
   }
+  // ════════════════════════════════════════════════════════════════
+  //  Plus / Team 支付链接生成 — v2.3.2（2026-05-26）
+  // ════════════════════════════════════════════════════════════════
+  //  用户反馈：旧版本 PayPal 长链支付完成后，PayPal 把用户「送回商家」
+  //          时跳到了 PayPal 的注册新账号页（而不是 ChatGPT）—— 订阅
+  //          因此无法 finalize，付了钱没用。
+  //
+  //  根因：旧版本用 checkout_ui_mode='hosted'，OpenAI 返回的是
+  //        pay.openai.com/c/pay/cs_xxx —— 这是 Stripe 域内的页面，
+  //        Stripe 写给 PayPal 的 return_url 是它自己的兜底页面；
+  //        当 Stripe session 已被消耗，return_url 解析崩了，PayPal
+  //        fallback 到「注册新账号」页。
+  //
+  //  修复：改用 checkout_ui_mode='custom'，OpenAI 返回
+  //        chatgpt.com/checkout/{merchant_path}/{session_id} —— 整个
+  //        支付页面在 chatgpt.com 域内，PayPal 的 return_url 由
+  //        ChatGPT 后端直接写为 chatgpt.com 域内地址，回调链路天然闭环。
+  //
+  //  权威参考：QLHazyCoder/FlowPilot（⭐4442 · 2026-05-25 更新）+
+  //           其 docs/使用教程 里贴出的 ChatGPT 网页内置 Plus 升级弹窗
+  //           原生请求体。逐字段对齐。
+  //
+  //  请求体字段（仅这几个，多一个少一个都可能出问题）：
+  //    · entry_point        : 'all_plans_pricing_modal' (Plus) /
+  //                           'team_workspace_purchase_modal' (Team)
+  //    · plan_name          : 'chatgptplusplan' / 'chatgptteamplan'
+  //    · checkout_ui_mode   : 'custom'   ← 关键修复
+  //    · billing_details    : { country, currency }
+  //    · promo_campaign     : { promo_campaign_id, is_coupon_from_query_param }
+  //    · team_plan_data     : { workspace_name, price_interval, seat_quantity } (仅 Team)
+  //
+  //  字段黑名单（不能加，会污染默认行为）：
+  //    · success_url / cancel_url   ← 让 ChatGPT 后端自己决定
+  //    · locale                     ← 跟随浏览器
+  //    · check_card_proxy           ← 旧 API 字段，已过时
+  //
+  //  processor_entity 字段（响应里）的取值，决定支付商家主体：
+  //    · 'openai_ie'  → 爱尔兰主体（欧元区 + GB + 多数欧亚国家）
+  //    · 'openai_llc' → 美国 LLC（US + ID + 部分新兴市场）
+  // ════════════════════════════════════════════════════════════════
+
+  // ─── checkout 响应 → 用户可用 URL ──────────────────────────────
+  //  custom 模式（v2.3.2 主路径）：
+  //    chatgpt.com/checkout/{merchant_path}/{checkout_session_id}
+  //    PayPal return_url 由 ChatGPT 后端写为 chatgpt.com 域内地址，
+  //    回调正常、订阅 finalize 闭环。
+  //
+  //  hosted 模式（兜底，不推荐 —— 用户反馈过 PayPal 跳注册页）：
+  //    pay.openai.com/c/pay/{sid}#{fragment from client_secret}
+  //    PayPal return_url 由 Stripe 兜底决定，存在跳到 PP 注册页风险。
+  // ───────────────────────────────────────────────────────────────
+
+  const CANCEL_URL = 'https://chatgpt.com/#pricing';
+
+  // merchant_path 推断：按 billing country 选 OpenAI 子实体
+  //   openai_ie  → 爱尔兰主体 · 欧元区 / 英国 / 多数欧亚国家
+  //   openai_llc → 美国 LLC · US / 印尼 / 部分新兴市场
+  function inferMerchantPath(country) {
+    const c = String(country || '').toUpperCase();
+    const ieCountries = ['DE','FR','IT','ES','NL','BE','AT','PT','IE','LU','FI','GR','CY','EE','LV','LT','MT','SK','SI','GB'];
+    if (ieCountries.indexOf(c) >= 0) return 'openai_ie';
+    return 'openai_llc';
+  }
+
+  // 从 client_secret 拆 fragment（仅 hosted 模式兜底用）
+  function fragmentFromClientSecret(clientSecret, sessionId) {
+    if (!clientSecret || !sessionId) return '';
+    const marker = sessionId + '_secret_';
+    const idx = clientSecret.indexOf(marker);
+    if (idx < 0) return '';
+    const fragEncoded = clientSecret.slice(idx + marker.length);
+    return fragEncoded ? '#' + fragEncoded : '';
+  }
+
+  // 兜底：响应没给 checkout_session_id 时从 url 字段里 regex 提取
+  //   覆盖 cs_live_xxx / cs_test_xxx 两种 Stripe session id 格式
+  function extractSessionIdFromAnyUrl(data) {
+    if (!data) return '';
+    const candidates = [data.checkout_url, data.url, data.openai_checkout_url];
+    for (const u of candidates) {
+      if (typeof u !== 'string' || !u) continue;
+      const m = u.match(/(cs_(?:live|test)_[A-Za-z0-9]+)/);
+      if (m) return m[1];
+    }
+    return '';
+  }
+
+  // 兜底：响应没给 processor_entity 时从 url 提取 /checkout/{entity}/cs_xxx
+  function extractEntityFromAnyUrl(data) {
+    if (!data) return '';
+    const candidates = [data.checkout_url, data.url, data.openai_checkout_url];
+    for (const u of candidates) {
+      if (typeof u !== 'string' || !u) continue;
+      const m = u.match(/\/checkout\/([^/]+)\/cs_(?:live|test)_/);
+      if (m) return m[1];
+    }
+    return '';
+  }
+
+  // custom 模式专用 URL 拼接（v2.3.2 强化兜底）
+  //   主路径：data.checkout_session_id + data.processor_entity 直接拼
+  //   兜底 1：从 data.url / data.checkout_url 用 regex 提 cs_id / entity
+  //   兜底 2：entity 仍缺时按 country 推断
+  //   兜底 3：仍缺 entity 时退到不带 merchant_path 的最短形式
+  function buildCustomCheckoutUrl(data, country) {
+    if (!data) return '';
+    const sid = (data.checkout_session_id || '').trim() || extractSessionIdFromAnyUrl(data);
+    if (!sid) return '';
+    const entity = (data.processor_entity || '').trim()
+      || extractEntityFromAnyUrl(data)
+      || inferMerchantPath(country);
+    if (entity) return 'https://chatgpt.com/checkout/' + entity + '/' + sid;
+    return 'https://chatgpt.com/checkout/' + sid;
+  }
+
   async function generatePlusLink(profile) {
     const token = await getAccessToken();
+    // 字段说明见上方注释块。
+    // cancel_url 加上以匹配 ChatGPT 网页原生行为（用户取消时回价格页）。
     const data = await postCheckout({
+      entry_point: 'all_plans_pricing_modal',
       plan_name: 'chatgptplusplan',
+      checkout_ui_mode: 'custom',
       billing_details: { country: profile.country, currency: profile.currency },
-      cancel_url: 'https://chatgpt.com/#pricing',
+      cancel_url: CANCEL_URL,
       promo_campaign: { promo_campaign_id: 'plus-1-month-free', is_coupon_from_query_param: false },
-      checkout_ui_mode: 'hosted', locale: 'zh-CN',
     }, token);
-    const url = data.url || data.stripe_hosted_url || data.checkout_url || '';
-    if (!url) throw new Error('响应里没有支付链接。');
+    const url = buildCustomCheckoutUrl(data, profile.country);
+    if (!url) throw new Error('响应里没有 checkout_session_id。响应字段：' + Object.keys(data || {}).join(','));
     return url;
   }
   async function generateTeamLink(opts) {
     const token = await getAccessToken();
+    const country = opts.country || 'US';
     const body = {
-      plan_name: 'chatgptteamplan',
-      billing_details: { country: opts.country || 'US', currency: opts.currency || 'USD' },
-      checkout_ui_mode: 'hosted',
       entry_point: 'team_workspace_purchase_modal',
+      plan_name: 'chatgptteamplan',
+      checkout_ui_mode: 'custom',
+      billing_details: { country: country, currency: opts.currency || 'USD' },
+      cancel_url: CANCEL_URL,
       team_plan_data: {
         workspace_name: opts.workspaceName || '我的工作区',
         price_interval: opts.interval === 'year' ? 'year' : 'month',
         seat_quantity: Number(opts.seats) || 2,
       },
-      cancel_url: 'https://chatgpt.com/#pricing',
     };
     if (opts.promoCode && opts.promoCode.trim()) body.promo_code = opts.promoCode.trim();
     const data = await postCheckout(body, token);
-    const url = data.url || data.stripe_hosted_url || data.checkout_url || '';
-    if (!url) throw new Error('未能在返回结果中找到 URL。');
-    return { openai: url, stripe: url.replace('pay.openai.com', 'checkout.stripe.com') };
+    const url = buildCustomCheckoutUrl(data, country);
+    if (!url) throw new Error('响应里没有 checkout_session_id。响应字段：' + Object.keys(data || {}).join(','));
+    return { openai: url, stripe: url };
   }
 
   // SVG ICONS (stroke 1.5 line style, viewBox 24)
@@ -1487,14 +1625,36 @@
       '  <div class="tutor-detail" id="' + NS + '-tutor-detail" hidden></div>',
       '</div>',
 
-      '<div class="lbl">选择支付区域<span class="hint">单选 / 批量</span></div>',
+      '<div class="lbl">选择支付区域<span class="hint">' + Object.keys(PLUS_PROFILES).length + ' 个预设 · 单选 / 批量 / 自定义</span></div>',
       '<div class="regions">' + regions + '</div>',
       '<div class="acts">',
       '  <button class="btn primary" data-action="plus-generate-all" ' + (state.plus.loading ? 'disabled' : '') + '>',
       (state.plus.loading ? '<span class="spin"></span> 并发生成中…' : (icon('globe', 14) + ' <span>批量生成 ' + Object.keys(PLUS_PROFILES).length + ' 个区域</span>')),
       '  </button>',
+      '  <button class="btn" data-action="plus-generate-paypal-pool" ' + (state.plus.loading ? 'disabled' : '') + ' title="只批量生成 9 个欧元区国家，专门找 PayPal 入口">',
+      icon('globe', 14) + ' <span>仅批量欧元区 PayPal 池</span>',
+      '  </button>',
       '</div>',
-      '<div class="stat"><b>0 元试用资格 = 你浏览器/代理的出口 IP 是日本</b> · 必须自己挂日本梯子 · country 字段只决定支付页 locale 与默认支付方式 · 欧元区显示 PayPal、日区显示 Konbini、美区偏卡直付</div>',
+      // 自定义国家/币种 · 当 OpenAI / Stripe 改了预设国家的 PayPal 映射时，
+      // 用户能即时切到任意 ISO-3166 alpha-2 + ISO-4217 三字母币种试错。
+      '<div class="lbl" style="margin-top:14px">自定义 country / currency<span class="hint">预设全失效时用这个</span></div>',
+      '<div class="grid2">',
+      '  <div class="row" style="margin-bottom:0">',
+      '    <label>Country（ISO 2 位）</label>',
+      '    <input class="ipt" id="' + NS + '-plus-cc" value="' + escapeHtml(state.plus.customCountry) + '" placeholder="如 IT / ES / NL / AT / PT / IE / LU / FI">',
+      '  </div>',
+      '  <div class="row" style="margin-bottom:0">',
+      '    <label>Currency（ISO 3 位）</label>',
+      '    <input class="ipt" id="' + NS + '-plus-cu" value="' + escapeHtml(state.plus.customCurrency) + '" placeholder="欧元区填 EUR · 英镑填 GBP">',
+      '  </div>',
+      '</div>',
+      '<div class="acts" style="margin-top:8px">',
+      '  <button class="btn primary" data-action="plus-generate-custom" ' + (state.plus.loading ? 'disabled' : '') + '>',
+      icon('bolt', 14) + ' <span>用自定义参数生成</span>',
+      '  </button>',
+      '  <button class="btn ghost" data-action="plus-reset-custom">' + icon('reset', 14) + ' <span>清空</span></button>',
+      '</div>',
+      '<div class="stat"><b>0 元试用资格 = 你浏览器/代理的出口 IP 是日本</b> · 必须自己挂日本梯子 · country 字段只决定支付页 locale 与默认支付方式 · 欧元区显示 PayPal、日区显示 Konbini、美区偏卡直付。<br><b style="color:#ff5722">OpenAI 会定期调整可用支付方式映射</b>，如某国当下没 PayPal 入口，依次试欧元区其他国家或英国。</div>',
       '<div id="' + NS + '-plus-result" style="margin-top:14px;"></div>',
     ].join('');
   }
@@ -1847,6 +2007,9 @@
       case 'auth-download': return onAuthDownload();
       case 'auth-download-all': return onAuthDownloadAll();
       case 'plus-generate-all': return onPlusGenerateAll();
+      case 'plus-generate-paypal-pool': return onPlusGeneratePaypalPool();
+      case 'plus-generate-custom': return onPlusGenerateCustom();
+      case 'plus-reset-custom': return onPlusResetCustom();
       case 'plus-tutorial-toggle': return onPlusTutorialToggle(btn);
       case 'team-generate': return onTeamGenerate();
       case 'team-reset': return onTeamReset();
@@ -1896,6 +2059,17 @@
   function onBodyInput(e) {
     if (e.target && e.target.id === NS + '-imp-input') {
       state.imp.rawInput = e.target.value;
+    }
+    // Plus 自定义 country / currency 输入实时同步并持久化
+    if (e.target && e.target.id === NS + '-plus-cc') {
+      state.plus.customCountry = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+      if (e.target.value !== state.plus.customCountry) e.target.value = state.plus.customCountry;
+      saveSettings({ plusCustomCountry: state.plus.customCountry });
+    }
+    if (e.target && e.target.id === NS + '-plus-cu') {
+      state.plus.customCurrency = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+      if (e.target.value !== state.plus.customCurrency) e.target.value = state.plus.customCurrency;
+      saveSettings({ plusCustomCurrency: state.plus.customCurrency });
     }
   }
 
@@ -2111,6 +2285,67 @@
       if (resEl) resEl.innerHTML = '<div class="stat err">' + escapeHtml(e.message || String(e)) + '</div>';
       toast(e.message || String(e), 'error', 5000);
     }
+  }
+
+  // ─── 自定义 country / currency 生成 ───────────────────────────
+  //   绕开预设池，让用户在 OpenAI 临时调整某国 PayPal 入口时即时应对。
+  async function onPlusGenerateCustom() {
+    const cc = String(state.plus.customCountry || '').trim().toUpperCase();
+    const cu = String(state.plus.customCurrency || '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(cc)) { toast('Country 需要 2 位字母（如 IT / NL / ES）', 'error'); return; }
+    if (!/^[A-Z]{3}$/.test(cu)) { toast('Currency 需要 3 位字母（如 EUR / GBP / USD）', 'error'); return; }
+    const profile = {
+      label: '自定义 · ' + cc + ' / ' + cu,
+      country: cc, currency: cu, code: cc,
+      note: '自定义参数',
+    };
+    state.plus.bulkResults = null;
+    const resEl = document.getElementById(NS + '-plus-result');
+    if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;用 ' + cc + '/' + cu + ' 生成…</div>';
+    try {
+      const url = await generatePlusLink(profile);
+      state.plus.lastUrl = url;
+      renderPlusResult(url);
+      toast('自定义链接生成成功', 'success');
+    } catch (e) {
+      if (resEl) resEl.innerHTML = '<div class="stat err">' + escapeHtml(e.message || String(e)) + '</div>';
+      toast(e.message || String(e), 'error', 5000);
+    }
+  }
+  function onPlusResetCustom() {
+    state.plus.customCountry = '';
+    state.plus.customCurrency = '';
+    saveSettings({ plusCustomCountry: '', plusCustomCurrency: '' });
+    refreshBody();
+    toast('已清空自定义参数', 'success');
+  }
+  // ─── 仅批量生成欧元区 PayPal 池 ────────────────────────────────
+  //   只跑 currency=EUR 的 9 个欧元区国家，专门用于 PayPal 入口找回。
+  //   实际上复用 onPlusGenerateAll 的逻辑，但过滤 PLUS_PROFILES。
+  async function onPlusGeneratePaypalPool() {
+    if (state.plus.loading) return;
+    state.plus.loading = true;
+    refreshBody();
+    const resEl = document.getElementById(NS + '-plus-result');
+    const eurEntries = Object.entries(PLUS_PROFILES).filter(function(entry) {
+      return entry[1].currency === 'EUR';
+    });
+    if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;并发生成 ' + eurEntries.length + ' 个欧元区国家链接…</div>';
+    const settled = await Promise.allSettled(eurEntries.map(function(entry) {
+      const profile = entry[1];
+      return generatePlusLink(profile).then(function(url) { return { key: entry[0], profile: profile, url: url }; });
+    }));
+    const items = settled.map(function(r, i) {
+      const profile = eurEntries[i][1];
+      if (r.status === 'fulfilled') return { profile: profile, url: r.value.url, ok: true };
+      return { profile: profile, error: (r.reason && r.reason.message) || String(r.reason), ok: false };
+    });
+    state.plus.bulkResults = items;
+    state.plus.loading = false;
+    refreshBody();
+    renderPlusBulkResults(items);
+    const okN = items.filter(function(x) { return x.ok; }).length;
+    toast('欧元区池 · ' + okN + '/' + items.length + ' 成功', okN > 0 ? 'success' : 'error');
   }
   function onPlusTutorialToggle(btn) {
     const detail = document.getElementById(NS + '-tutor-detail');

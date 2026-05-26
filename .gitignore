@@ -31,3 +31,5 @@ team.txt
 claude- cracked.py
 # 本发布脚本本身，发布后无需进 repo
 .publish_plan.sh
+# 另一个独立项目（Cloudflare Workers），不属于本仓库
+高级会话转换网站/
