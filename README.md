@@ -14,7 +14,7 @@
 
 <br>
 
-[![version](https://img.shields.io/badge/版本-2.3.3-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
+[![version](https://img.shields.io/badge/版本-2.3.4-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
 [![tampermonkey](https://img.shields.io/badge/Tampermonkey-required-16a34a?style=for-the-badge&labelColor=1a1614)](https://www.tampermonkey.net/)
 [![license](https://img.shields.io/badge/许可证-MIT-6b6660?style=for-the-badge&labelColor=1a1614)](./LICENSE)
 [![target](https://img.shields.io/badge/目标域名-chatgpt.com-2563eb?style=for-the-badge&labelColor=1a1614)](https://chatgpt.com)
@@ -138,7 +138,7 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 
 > v2.3.3 重写。请求体逐字段对齐 ChatGPT 网页内置 Plus / Team 升级弹窗，参考 [QLHazyCoder/FlowPilot](https://github.com/QLHazyCoder/FlowPilot)（⭐4442 · 2026-05-25 v2.5）+ [DanOps-1/Gpt-Agreement-Payment](https://github.com/DanOps-1/Gpt-Agreement-Payment)（⭐1785 · 2026-05-25）的最新实现。
 
-### 4.1 ChatGPT Plus · 12 个区域预设 + 自定义
+### 4.1 ChatGPT Plus · 13 个区域预设 + 自定义
 
 | 编号 | 区域 | 国家 | 币种 | PayPal 入口 | 备注 |
 |:--:|:--|:--:|:--:|:--:|:--|
@@ -154,6 +154,7 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 | 10 | **PayPal · 英国**   | GB | GBP | ✓ | 英镑区 · PayPal 也常出现 |
 | 11 | **日区直绑**         | JP | JPY | – | 日卡 / Wise 直绑（不走 PayPal，需真日卡） |
 | 12 | **GoPay · 印尼**     | ID | IDR | – | 印尼区 GoPay · 教程称已被薅烂封号高发 |
+| 13 | **美区兜底**         | US | USD | – | OpenAI 默认区域 · 通常无 PayPal 入口但**卡直付最稳** · 欧元区全失败时的最后兜底 |
 
 > OpenAI / Stripe 会定期调整 country → 支付方式映射。**某国当下没 PayPal 入口不代表脚本坏**，依次试欧元区其他国家即可。
 
@@ -205,6 +206,8 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 | **优惠码** | 默认留空（满网优惠码每天都在失效，强烈建议自行从 linux.do / 蓝灯查最新） |
 | **国家 / 币种** | 默认 US / USD，可改 |
 | **Session 来源** | 与 Plus 共享 · 切到自定义后 Team 也用粘贴的 token 生成 |
+
+> **v2.3.4 起：6 个字段全部实时持久化到 localStorage** —— 你输入一个字就保存一次，不必等点「生成 Team 链接」才存。下次打开扩展面板，所有字段自动恢复上次的值；要清空回默认值点底部「重置」。
 
 > Team 也支持双链：openai / stripe 两个域名镜像同时复制 / 打开。
 
@@ -431,7 +434,43 @@ Codex-Manager **故意**只接受真实的 `id_token`，缺失就保留 `""` 空
 
 最常见两种原因：
 1. **已经是 Plus 订阅了**，不能重复订阅 → 错误信息会包含 `existing_subscription`
-2. **区域 country/currency 与账号绑定地区不匹配** → 试试 GoPay/Indonesia（最宽松）
+2. **区域 country/currency 与账号绑定地区不匹配** → 试试美区兜底（US/USD · 最稳）
+</details>
+
+<details>
+<summary><b>选 PayPal 后，最后跳到「添加信用卡完成」界面，不能完成订阅？</b></summary>
+
+**这是 PayPal 端的反诈机制，不是脚本的 bug**。PayPal 在以下情况会强制要求你换一张可用卡完成验证：
+
+| 触发条件 | 应对方案 |
+|:--|:--|
+| PayPal 账号还没绑定有效卡 | 提前在 PayPal 内绑一张可用美卡（不一定是 0 刀那张） |
+| 0 刀试用卡被 PayPal 拒（被薅怕了） | 换张别的卡试 / 换 IP 重新生成链接 |
+| 当前 country 的 PayPal 通道临时风控 | 换其他欧元区国家重新生成（IE / AT / PT 这种冷门通道有时风控宽松） |
+| 全部尝试失败 | 直接用「**美区兜底** US/USD」走信用卡直付（虽然不薅羊毛，但稳定） |
+
+**关键认知**：脚本只负责生成 checkout 链接，**支付环节是你与 PayPal/Stripe 直接的事**，跟 chatgpt.com 已经无关。链接打开后的行为差异完全由 PayPal/Stripe 端决定。
+</details>
+
+<details>
+<summary><b>支付完成后跳到 PayPal 注册新账号页，无法回到 ChatGPT finalize 订阅？</b></summary>
+
+这个问题在 **v2.3.3 修复**了：旧版 v2.3.2 错误用 `checkout_ui_mode: 'custom'` 只产 chatgpt.com 内部链接，在指纹浏览器干净环境无法付款。v2.3.3 起改回 `'hosted'` 产 `pay.openai.com` 外部 standalone 长链。
+
+如果你升级到 v2.3.3+ 还遇到回调问题，确认：
+1. 是否用的「**外部 Stripe 长链**」（pay.openai.com 开头）而不是「内部 ChatGPT 短链」（chatgpt.com 开头）
+2. 指纹浏览器是否能正常访问 `pay.openai.com` 域名
+3. PayPal 完成后是否跳到了 `chatgpt.com/?finalize_subscription=true` 类似回调页（这是正常）
+</details>
+
+<details>
+<summary><b>v2.3.4 我设置的 Team 工作区名/优惠码下次打开还在吗？</b></summary>
+
+**会在**。v2.3.4 起 Team 表单的全部 6 个字段（workspace / seats / promo / country / currency / interval）都**每输入一个字符就实时保存到 localStorage**，不必等点「生成 Team 链接」才会保存。
+
+下次打开扩展面板，所有字段会从 localStorage 自动恢复你上次填的值。
+
+如要清空回默认值，点 Team Tab 底部的「重置」按钮。
 </details>
 
 <details>

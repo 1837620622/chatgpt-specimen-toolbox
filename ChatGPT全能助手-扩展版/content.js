@@ -10,7 +10,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.3.3';
+  const VERSION = '2.3.4';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -77,6 +77,8 @@
     direct:    { label: '日区直绑 · JPY',    country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（不走 PayPal，需真日卡）' },
     gopay:     { label: 'GoPay · 印尼',      country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 教程称已被薅烂封号高发' },
     paypal_gb: { label: 'PayPal · 英国',     country: 'GB', currency: 'GBP', code: 'GB', note: '英镑区 · PayPal 也常出现' },
+    // 兜底 · 美区美元 · OpenAI 默认区域 · 通常不显示 PayPal 但生成最稳
+    us_default:{ label: '美区兜底 · USD',    country: 'US', currency: 'USD', code: 'US', note: 'OpenAI 默认区域 · 通常无 PayPal 入口但卡直付最稳 · 欧元区全失败时的最后兜底' },
   };
 
   function loadSettings() {
@@ -1056,7 +1058,7 @@
     return getAccessToken();
   }
   // ════════════════════════════════════════════════════════════════
-  //  Plus / Team 支付链接生成 — v2.3.3（2026-05-26）
+  //  Plus / Team 支付链接生成 — v2.3.4（2026-05-26）
   // ════════════════════════════════════════════════════════════════
   //  用户反馈：旧版本 PayPal 长链支付完成后，PayPal 把用户「送回商家」
   //          时跳到了 PayPal 的注册新账号页（而不是 ChatGPT）—— 订阅
@@ -1097,7 +1099,7 @@
   // ════════════════════════════════════════════════════════════════
 
   // ─── checkout 响应 → 用户可用 URL ──────────────────────────────
-  //  custom 模式（v2.3.3 主路径）：
+  //  custom 模式（v2.3.4 主路径）：
   //    chatgpt.com/checkout/{merchant_path}/{checkout_session_id}
   //    PayPal return_url 由 ChatGPT 后端写为 chatgpt.com 域内地址，
   //    回调正常、订阅 finalize 闭环。
@@ -1154,7 +1156,7 @@
     return '';
   }
 
-  // custom 模式专用 URL 拼接（v2.3.3 强化兜底）
+  // custom 模式专用 URL 拼接（v2.3.4 强化兜底）
   //   主路径：data.checkout_session_id + data.processor_entity 直接拼
   //   兜底 1：从 data.url / data.checkout_url 用 regex 提 cs_id / entity
   //   兜底 2：entity 仍缺时按 country 推断
@@ -1236,7 +1238,7 @@
     if (!urls.external && !urls.internal) {
       throw new Error('响应里没有有效的链接。响应字段：' + Object.keys(data || {}).join(','));
     }
-    // 历史 API 形态：openai / stripe 双键 + v2.3.3 新增 external / internal
+    // 历史 API 形态：openai / stripe 双键 + v2.3.4 新增 external / internal
     //   openai = 外部 Stripe 长链 (pay.openai.com)
     //   stripe = pay.openai.com 替换为 checkout.stripe.com 的镜像形式
     //   external = pay.openai.com（同 openai）
@@ -1575,7 +1577,7 @@
     '#' + NS + '-modal .imp-chip-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '#' + NS + '-modal input[type="file"].ipt { padding: 7px 10px; font-size: 12px; }',
 
-    /* ─── Segmented Control · Token 来源切换 (v2.3.3) ─── */
+    /* ─── Segmented Control · Token 来源切换 (v2.3.4) ─── */
     '#' + NS + '-modal .seg { display: inline-flex; gap: 0; padding: 3px; background: #fafaf8; border: 1px solid #e8e6e0; border-radius: 8px; margin-bottom: 10px; }',
     '#' + NS + '-modal .seg-item {',
     '  display: inline-flex; align-items: center; gap: 6px;',
@@ -1727,7 +1729,7 @@
       '  <div class="tutor-detail" id="' + NS + '-tutor-detail" hidden></div>',
       '</div>',
 
-      // ─── Token 来源切换器（v2.3.3 新增）─────────────────────────
+      // ─── Token 来源切换器（v2.3.4 新增）─────────────────────────
       //   两种模式：① 用当前网页 Session（默认，最方便）
       //            ② 用自定义 access_token（粘贴朋友的 / 别号的 token）
       //   做成 payurl.ark2.cn 那种「外部工具」形态，本地处理零上传。
@@ -2135,7 +2137,7 @@
       case 'plus-generate-paypal-pool': return onPlusGeneratePaypalPool();
       case 'plus-generate-custom': return onPlusGenerateCustom();
       case 'plus-reset-custom': return onPlusResetCustom();
-      // Token 来源切换 (v2.3.3)
+      // Token 来源切换 (v2.3.4)
       case 'plus-token-source': return onPlusTokenSource(btn.getAttribute('data-token-source'));
       case 'plus-token-paste': return onPlusTokenPaste();
       case 'plus-token-clear': return onPlusTokenClear();
@@ -2184,6 +2186,12 @@
       reader.readAsText(f);
       return;
     }
+    // Team 计费周期 select（按月/按年）— 也实时持久化（v2.3.4）
+    if (t.id === NS + '-team-interval') {
+      state.team.form.interval = t.value;
+      saveSettings({ teamForm: state.team.form });
+      return;
+    }
   }
   function onBodyInput(e) {
     if (e.target && e.target.id === NS + '-imp-input') {
@@ -2207,6 +2215,23 @@
       // 更新右下角字符计数（不全量 refreshBody 以保留 textarea 焦点）
       const stat = document.querySelector('#' + NS + '-body .acts .stat');
       if (stat) stat.textContent = state.plus.customToken ? ('已粘贴 ' + state.plus.customToken.length + ' 字符 · 已自动保存') : '尚未粘贴';
+    }
+    // ─── Team 表单字段实时持久化（v2.3.4）─────────────────────────
+    //   5 个 input 字段每输入一个字符就同步到 state + saveSettings
+    //   不必等用户点「生成 Team 链接」按钮才保存，避免误操作丢失
+    if (e.target && e.target.id && e.target.id.indexOf(NS + '-team-') === 0) {
+      const teamFieldMap = {
+        [NS + '-team-workspace']: 'workspace',
+        [NS + '-team-seats']: 'seats',
+        [NS + '-team-promo']: 'promo',
+        [NS + '-team-country']: 'country',
+        [NS + '-team-currency']: 'currency',
+      };
+      const field = teamFieldMap[e.target.id];
+      if (field) {
+        state.team.form[field] = e.target.value;
+        saveSettings({ teamForm: state.team.form });
+      }
     }
   }
 
@@ -2385,7 +2410,7 @@
       toast('已开始下载 ' + list.length + ' 个文件', 'success');
     } catch (e) { toast(e.message || String(e), 'error'); }
   }
-  // renderPlusResult · 显示两条链接（v2.3.3）
+  // renderPlusResult · 显示两条链接（v2.3.4）
   //   urls 参数兼容：传字符串（旧）→ 当作 external；传 {external, internal} 对象（新）→ 两条都显示
   function renderPlusResult(urls) {
     const el = document.getElementById(NS + '-plus-result');
@@ -2479,7 +2504,7 @@
     toast('已清空自定义参数', 'success');
   }
 
-  // ─── Token 来源切换（v2.3.3）─────────────────────────────────
+  // ─── Token 来源切换（v2.3.4）─────────────────────────────────
   //   session → custom：展开粘贴区，用户填 token 后才能生成
   //   custom  → session：折叠粘贴区，回到当前网页 session 流程
   //   切换偏好持久化，textarea 内容也持久化（用户体验优先）
@@ -2592,7 +2617,7 @@
     renderPlusBulkResults(items);
     toast('批量完成：成功 ' + okCount + ' / ' + items.length, okCount === items.length ? 'success' : 'info');
   }
-  // v2.3.3：item.url 现在是 {external, internal} 对象。
+  // v2.3.4：item.url 现在是 {external, internal} 对象。
   //   bulk 视图主推外部 Stripe 长链（用户主要场景）；
   //   每条结果带「复制外部」「复制内部」两个 chip 按钮，默认主操作走外部。
   function renderPlusBulkResults(items) {

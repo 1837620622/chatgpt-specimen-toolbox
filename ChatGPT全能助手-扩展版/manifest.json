@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT 全能助手 · Specimen",
-  "version": "2.3.3",
+  "version": "2.3.4",
   "description": "ChatGPT Session 一键导出 9 种主流格式 + 反向导入：粘贴任意 JSON 自动识别 11 种来源并互转所有格式；并生成 Plus 多区域 + Team 工作区订阅链接。",
   "author": "传康KK-CKNB",
   "homepage_url": "https://github.com/1837620622",
