@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.4.0
-// @description  ChatGPT Session 一键导出 9 种主流格式 + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.4.0 长链引擎升级：补上 Stripe payment_pages init 关键一步，hosted 长链拿回权威 #fid 片段再重写为 pay.openai.com，根治旧版长链常打不开的问题。Specimen 设计语言，去 AI 味。
+// @version      2.4.1
+// @description  ChatGPT Session 一键导出 9 种主流格式 + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.4.1 长链引擎加代理兜底：Stripe init 被广告拦截扩展拉黑时自动走自有域名 Workers 代理中转，确保长链稳定生成。Specimen 设计语言，去 AI 味。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -28,7 +28,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.4.0';
+  const VERSION = '2.4.1';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
