@@ -10,7 +10,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.3.4';
+  const VERSION = '2.4.0';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -299,6 +299,129 @@
     try { data = JSON.parse(text); } catch (e) {}
     if (!r.ok) throw new Error('checkout 失败 HTTP ' + r.status + '：' + text.slice(0, 500));
     return data;
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  长链引擎 v2.4.0 —— 对齐本地「最新长链」服务端三步法
+  // ----------------------------------------------------------------
+  //  旧版（v2.3.x）只在 hosted 响应里直接取 data.url，或拿 client_secret
+  //  手工拼 #fid 片段——hosted 模式下 OpenAI 经常不回完整片段，拼出来的
+  //  pay.openai.com 长链打不开。新版补上服务端同款关键一步：显式去打
+  //  Stripe 的 payment_pages init 端点，拿回带权威 #fid 片段的 hosted
+  //  URL，再把 host 从 checkout.stripe.com 重写成 pay.openai.com。
+  //
+  //  三步：
+  //    1. POST /backend-api/payments/checkout            → cs_id + publishable_key
+  //    2. POST api.stripe.com/v1/payment_pages/{cs}/init → stripe_hosted_url
+  //    3. host 重写 checkout.stripe.com → pay.openai.com → 最终长链
+  //
+  //  跨域说明：第 2 步打的是 api.stripe.com，与 chatgpt.com 不同源。
+  //  扩展版的 content script 受所在页面同源策略限制，跨域 fetch 会被
+  //  CORS 拦，所以转交 background service worker（持 api.stripe.com 的
+  //  host_permissions）代发；SW 不可用时退一步直接 fetch 兜底。
+  // ════════════════════════════════════════════════════════════════
+
+  // OpenAI 嵌在 checkout JS 里的公开 Stripe live publishable key，
+  // 仅当 checkout 响应里没带 publishable_key 时兜底用。
+  const DEFAULT_STRIPE_PK = 'pk_live_51HOrSwC6h1nxGoI3lTAgRjYVrz4dU3fVOabyCcKR3pbEJguCVAlqCxdxCUvoRh1XWwRacViovU3kLKvpkjh7IqkW00iXQsjo3n';
+  // Stripe 版本头：与 ChatGPT 网页内置 checkout 的 _stripe_version 逐字对齐
+  const STRIPE_API_VERSION = '2025-03-31.basil; checkout_server_update_beta=v1; checkout_manual_approval_preview=v1';
+  const STRIPE_INIT_BASE = 'https://api.stripe.com/v1/payment_pages/';
+
+  // 通道 locale → Stripe init 用的语言标签，未指定按服务端默认 en
+  function stripeInitLocale(locale) {
+    return (locale && String(locale).trim()) || 'en';
+  }
+
+  // 拼 Stripe payment_pages init 的表单体（application/x-www-form-urlencoded）
+  function buildStripeInitBody(pk, locale) {
+    const jsId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : (Date.now().toString(16) + Math.random().toString(16).slice(2));
+    const p = new URLSearchParams();
+    p.set('browser_locale', 'en-US');
+    p.set('browser_timezone', 'Asia/Shanghai');
+    p.set('elements_session_client[client_betas][0]', 'custom_checkout_server_updates_1');
+    p.set('elements_session_client[client_betas][1]', 'custom_checkout_manual_approval_1');
+    p.set('elements_session_client[elements_init_source]', 'custom_checkout');
+    p.set('elements_session_client[referrer_host]', 'chatgpt.com');
+    p.set('elements_session_client[stripe_js_id]', jsId);
+    p.set('elements_session_client[locale]', stripeInitLocale(locale));
+    p.set('elements_session_client[is_aggregation_expected]', 'false');
+    p.set('elements_options_client[saved_payment_method][enable_save]', 'auto');
+    p.set('elements_options_client[saved_payment_method][enable_redisplay]', 'auto');
+    p.set('key', pk);
+    p.set('_stripe_version', STRIPE_API_VERSION);
+    return p.toString();
+  }
+
+  // 跨域 POST api.stripe.com：优先转交 background SW（绕 CORS），SW 不可用时降级 fetch
+  function stripeFetch(url, headers, body) {
+    return new Promise(function (resolve, reject) {
+      const hasRuntime = (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function');
+      if (hasRuntime) {
+        try {
+          chrome.runtime.sendMessage(
+            { type: 'CKNB_STRIPE_INIT', url: url, headers: headers, body: body },
+            function (resp) {
+              if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message || 'background 通信失败')); return; }
+              if (!resp || !resp.ok) { reject(new Error((resp && resp.error) || 'Stripe 请求失败')); return; }
+              resolve({ status: resp.status, text: resp.text });
+            }
+          );
+          return;
+        } catch (e) { /* 落到下方 fetch 兜底 */ }
+      }
+      fetch(url, { method: 'POST', headers: headers, body: body })
+        .then(function (r) { return r.text().then(function (t) { resolve({ status: r.status, text: t }); }); })
+        .catch(function (e) { reject(e); });
+    });
+  }
+
+  // 第 2 步：调 Stripe payment_pages init，返回解析后的 JSON
+  async function stripeInit(csId, pk, locale) {
+    const url = STRIPE_INIT_BASE + encodeURIComponent(csId) + '/init';
+    const headers = {
+      'Authorization': 'Bearer ' + pk,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    const res = await stripeFetch(url, headers, buildStripeInitBody(pk, locale));
+    let data = {};
+    try { data = JSON.parse(res.text); } catch (e) {}
+    if (res.status !== 200) {
+      throw new Error('Stripe init 失败 HTTP ' + res.status + '：' + String(res.text || '').slice(0, 300));
+    }
+    return data;
+  }
+
+  // checkout 响应 → 长链。主路径走 Stripe init，失败回退旧版 buildBothCheckoutUrls。
+  //   返回结构兼容旧版 { external, internal }，额外带 stripe / cs_id 供 Team 用。
+  async function buildLongLinkUrls(data, country, locale) {
+    const base = buildBothCheckoutUrls(data, country);  // 旧版结果：保内部短链 + 兜底外链
+    const sid = (data && (data.checkout_session_id || '').trim()) || extractSessionIdFromAnyUrl(data);
+    if (!sid) return base;  // 连 session id 都没有，无从打 Stripe，直接退回旧逻辑
+    const pk = (data && (data.publishable_key || '').trim()) || DEFAULT_STRIPE_PK;
+    try {
+      const sd = await stripeInit(sid, pk, locale);
+      let hosted = sd.stripe_hosted_url || sd.hosted_url || sd.url || '';
+      // init 没回 hosted url 时，退一步用 client_secret 拼 checkout.stripe.com 片段
+      if (!hosted) {
+        const frag = fragmentFromClientSecret(data.client_secret, sid);
+        if (frag) hosted = 'https://checkout.stripe.com/c/pay/' + sid + frag;
+      }
+      // 第 3 步：host 重写 checkout.stripe.com → pay.openai.com
+      const external = hosted
+        ? (hosted.indexOf('checkout.stripe.com') >= 0 ? hosted.replace('checkout.stripe.com', 'pay.openai.com') : hosted)
+        : base.external;
+      const stripeMirror = hosted
+        ? (hosted.indexOf('pay.openai.com') >= 0 ? hosted.replace('pay.openai.com', 'checkout.stripe.com') : hosted)
+        : (base.external && base.external.indexOf('pay.openai.com') >= 0 ? base.external.replace('pay.openai.com', 'checkout.stripe.com') : base.external);
+      return { external: external || base.external, internal: base.internal, stripe: stripeMirror, cs_id: sid };
+    } catch (e) {
+      // Stripe init 失败不致命：退回旧版逻辑，至少不比 v2.3.x 差
+      try { console.warn('[' + NS + '] Stripe init 失败，回退旧版取链：' + ((e && e.message) || e)); } catch (_) {}
+      return base;
+    }
   }
 
   // AUTH CONVERSION (上游 gtxx3600 兼容)
@@ -1082,7 +1205,7 @@
     return getAccessToken();
   }
   // ════════════════════════════════════════════════════════════════
-  //  Plus / Team 支付链接生成 — v2.3.4（2026-05-26）
+  //  Plus / Team 支付链接生成 — v2.4.0 长链引擎（Stripe init 三步法）
   // ════════════════════════════════════════════════════════════════
   //  用户反馈：旧版本 PayPal 长链支付完成后，PayPal 把用户「送回商家」
   //          时跳到了 PayPal 的注册新账号页（而不是 ChatGPT）—— 订阅
@@ -1235,7 +1358,7 @@
       cancel_url: CANCEL_URL,
       promo_campaign: { promo_campaign_id: 'plus-1-month-free', is_coupon_from_query_param: false },
     }, token, buildAcceptLanguage(profile.locale));
-    const urls = buildBothCheckoutUrls(data, profile.country);
+    const urls = await buildLongLinkUrls(data, profile.country, profile.locale);
     if (!urls.external && !urls.internal) {
       throw new Error('响应里没有有效的链接。响应字段：' + Object.keys(data || {}).join(','));
     }
@@ -1258,7 +1381,7 @@
     };
     if (opts.promoCode && opts.promoCode.trim()) body.promo_code = opts.promoCode.trim();
     const data = await postCheckout(body, token);
-    const urls = buildBothCheckoutUrls(data, country);
+    const urls = await buildLongLinkUrls(data, country, opts.locale);
     if (!urls.external && !urls.internal) {
       throw new Error('响应里没有有效的链接。响应字段：' + Object.keys(data || {}).join(','));
     }
@@ -1270,7 +1393,7 @@
     const ext = urls.external || urls.internal;
     return {
       openai: ext,
-      stripe: ext && ext.indexOf('pay.openai.com') >= 0 ? ext.replace('pay.openai.com', 'checkout.stripe.com') : ext,
+      stripe: urls.stripe || (ext && ext.indexOf('pay.openai.com') >= 0 ? ext.replace('pay.openai.com', 'checkout.stripe.com') : ext),
       external: urls.external,
       internal: urls.internal,
     };

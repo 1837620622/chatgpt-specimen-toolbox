@@ -91,3 +91,29 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     dispatchOpenModal(tab);
   }
 });
+
+// ------------------------------------------------------------
+// 入口 4：content script 跨域代理 —— Stripe payment_pages init
+// ------------------------------------------------------------
+// 长链引擎第 2 步要打 https://api.stripe.com/v1/payment_pages/{cs}/init，
+// 与 chatgpt.com 不同源。MV3 里 content script 的 fetch 受所在页面同源
+// 策略约束，跨域会被 CORS 拦；而 background service worker 持有 manifest
+// host_permissions 里声明的 https://api.stripe.com/* 权限，由它代发即可
+// 绕过 CORS。content.js 把 url / headers / body 通过 CKNB_STRIPE_INIT
+// 消息发来，这里 fetch 后把状态码与响应文本原样回传。
+// ------------------------------------------------------------
+const MSG_STRIPE_INIT = 'CKNB_STRIPE_INIT';
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // 非本协议消息直接放行，避免占用其它监听器的响应通道
+  if (!msg || msg.type !== MSG_STRIPE_INIT) return;
+  fetch(msg.url, {
+    method: 'POST',
+    headers: msg.headers || {},
+    body: msg.body,
+  })
+    .then((r) => r.text().then((t) => sendResponse({ ok: true, status: r.status, text: t })))
+    .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+  // 返回 true 保持消息通道开启，等待上面的异步 sendResponse
+  return true;
+});

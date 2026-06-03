@@ -33,3 +33,5 @@ claude- cracked.py
 .publish_plan.sh
 # 另一个独立项目（Cloudflare Workers），不属于本仓库
 高级会话转换网站/
+# 本地长链生成服务端（参考源），按用户选择仅作本地参考，不进公开仓库
+最新长链/

@@ -14,7 +14,7 @@
 
 <br>
 
-[![version](https://img.shields.io/badge/版本-2.3.4-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
+[![version](https://img.shields.io/badge/版本-2.4.0-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
 [![tampermonkey](https://img.shields.io/badge/Tampermonkey-required-16a34a?style=for-the-badge&labelColor=1a1614)](https://www.tampermonkey.net/)
 [![license](https://img.shields.io/badge/许可证-MIT-6b6660?style=for-the-badge&labelColor=1a1614)](./LICENSE)
 [![target](https://img.shields.io/badge/目标域名-chatgpt.com-2563eb?style=for-the-badge&labelColor=1a1614)](https://chatgpt.com)
@@ -195,6 +195,27 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 | **② 内部 ChatGPT 短链** | `https://chatgpt.com/checkout/openai_ie/cs_live_xxx` | 仅当前登录账号当前浏览器可用 · session cookie 自动认证 · 备选 |
 
 > **v2.3.2 → v2.3.3 关键变更**：v2.3.2 错误地用 `checkout_ui_mode: 'custom'` 只返回 chatgpt.com 内部链接 —— 用户在指纹浏览器干净环境打开时因为没 ChatGPT session 而到最后**无法付款**。v2.3.3 改回 `'hosted'` 模式返回 standalone Stripe 长链，同时从同一个 `checkout_session_id` 拼出内部 wrapper 短链作为备选。**两条同时给，按场景选**。
+
+### 4.3.1 ⭐ v2.4.0 长链引擎升级（Stripe init 三步法）
+
+旧版只从 hosted 响应直接取 `data.url`，或拿 `client_secret` 手工拼 `#fid` 片段。问题是 hosted 模式下 OpenAI 经常**不回完整片段**，拼出来的 `pay.openai.com` 长链打开后白屏 / 打不开。
+
+v2.4.0 补上服务端同款关键一步，把取链改成确定可靠的三步法：
+
+| 步骤 | 动作 | 产出 |
+|:--:|:--|:--|
+| 1 | `POST /backend-api/payments/checkout`（同源，带 access_token） | `checkout_session_id` + `publishable_key` |
+| 2 | `POST api.stripe.com/v1/payment_pages/{cs}/init`（跨域，带 publishable_key） | 带权威 `#fid` 片段的 `checkout.stripe.com` hosted URL |
+| 3 | host 重写 `checkout.stripe.com` → `pay.openai.com` | 最终可用长链 |
+
+第 2 步是跨域请求，两端用各自平台最稳的方式绕过浏览器同源限制：
+
+| 形态 | 跨域方案 | 声明 |
+|:--|:--|:--|
+| **油猴脚本** | `GM_xmlhttpRequest` 直接发，不受同源策略约束 | 头部 `@grant GM_xmlhttpRequest` + `@connect api.stripe.com` |
+| **浏览器扩展** | content script 转交 background service worker 代发（SW 持主机权限不受 CORS 限制） | manifest `host_permissions` 增加 `https://api.stripe.com/*` |
+
+> 第 2 步失败时**自动回退**到旧版取链逻辑（`data.url` / `client_secret` 拼片段），保证 v2.4.0 在任何情况下都不比 v2.3.x 差。
 
 ### 4.4 ChatGPT Team · 工作区订阅
 

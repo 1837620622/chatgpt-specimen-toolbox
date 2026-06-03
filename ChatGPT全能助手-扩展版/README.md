@@ -10,6 +10,7 @@ Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
 - 在 ChatGPT 页面右下角注入一颗 Specimen 风格浮窗按钮，点击打开「全能助手」面板。
 - ChatGPT Session 一键导出 9 种主流格式：`auth.json` / Cockpit / Codex Auth / CPA / Sub2API / 9router / AxonHub / Codex-Manager / 原始 Session。
 - **v2.3.0 新增**：「导入 · 转换」Tab —— 把别人给的任意 JSON 文件（11 种来源自动识别：Sub2API / Cockpit / auth.json / CPA / 9router / AxonHub / Codex-Manager / 原 Session / Codex Auth / 裸 JWT / 数组形式）粘进来，互转出 9 种目标格式中任意一种或全部，支持多账号批量。
+- **v2.4.0 长链引擎**：取链补上 Stripe `payment_pages/{cs}/init` 关键一步，拿回带权威 `#fid` 片段的 hosted URL 再重写为 `pay.openai.com`，根治旧版长链常打不开的问题；该步跨域请求由 background service worker 代发，绕过 content script 的 CORS 限制。
 - 生成 Plus 多区域订阅链接（PayPal 欧元区、法区、日区直绑、印尼 GoPay）。
 - 生成 Team 工作区订阅链接，自定义工作区名、座位数、促销码、国家/币种/周期。
 - 浮窗位置可拖拽并持久化到 `localStorage`。
@@ -48,15 +49,17 @@ ChatGPT全能助手-扩展版/
 
 ## 与油猴版的代码差异
 
-为保证「功能完全一样」，主体逻辑零修改，仅有两处必要桥接：
+为保证「功能完全一样」，主体逻辑零修改，必要桥接如下：
 
 1. 头部去掉 `// ==UserScript== ... // ==/UserScript==` 元数据块（扩展不使用）。
-2. IIFE 内部 `init()` 之前追加 18 行 `chrome.runtime.onMessage` 监听，用于接收 background.js 转发的 `CKNB_OPEN_MODAL` 消息。
+2. IIFE 内部 `init()` 之前追加 `chrome.runtime.onMessage` 监听，用于接收 background.js 转发的 `CKNB_OPEN_MODAL` 消息。
+3. **v2.4.0 长链引擎跨域桥**：油猴版第 2 步（Stripe `payment_pages/{cs}/init`）用 `GM_xmlhttpRequest` 直接跨域发；扩展版 content script 受所在页面 CORS 约束，改为通过 `CKNB_STRIPE_INIT` 消息把 url / headers / body 转交 background service worker 代发（manifest `host_permissions` 已含 `https://api.stripe.com/*`），再把响应回传。
 
 油猴 API 在扩展环境下自动降级：
 
 - `GM_setClipboard` → 走脚本内已有的 `navigator.clipboard.writeText()` / `document.execCommand('copy')` 双重 fallback。
 - `GM_registerMenuCommand` → 由 background.js 用 `chrome.contextMenus` + `chrome.action.onClicked` 等价实现。
+- `GM_xmlhttpRequest`（长链第 2 步跨域）→ 由 background service worker 持 `api.stripe.com` 主机权限代发，绕过 content script 的 CORS 限制。
 
 ## 作者
 
