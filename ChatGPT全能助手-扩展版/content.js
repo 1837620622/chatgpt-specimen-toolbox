@@ -381,9 +381,11 @@
   // 第 2 步：调 Stripe payment_pages init，返回解析后的 JSON
   async function stripeInit(csId, pk, locale) {
     const url = STRIPE_INIT_BASE + encodeURIComponent(csId) + '/init';
+    const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
     const headers = {
       'Authorization': 'Bearer ' + pk,
       'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': DEFAULT_UA,
     };
     const res = await stripeFetch(url, headers, buildStripeInitBody(pk, locale));
     let data = {};
@@ -1227,16 +1229,15 @@
   //           原生请求体。逐字段对齐。
   //
   //  请求体字段（仅这几个，多一个少一个都可能出问题）：
-  //    · entry_point        : 'all_plans_pricing_modal' (Plus) /
-  //                           'team_workspace_purchase_modal' (Team)
   //    · plan_name          : 'chatgptplusplan' / 'chatgptteamplan'
-  //    · checkout_ui_mode   : 'custom'   ← 关键修复
+  //    · checkout_ui_mode   : 'hosted'
   //    · billing_details    : { country, currency }
-  //    · promo_campaign     : { promo_campaign_id, is_coupon_from_query_param }
+  //    · cancel_url         : 'https://chatgpt.com/#pricing'
   //    · team_plan_data     : { workspace_name, price_interval, seat_quantity } (仅 Team)
   //
   //  字段黑名单（不能加，会污染默认行为）：
-  //    · success_url / cancel_url   ← 让 ChatGPT 后端自己决定
+  //    · success_url                ← 让 ChatGPT 后端自己决定
+  //    · entry_point / promo_campaign ← 会导致 Stripe session 异常，长链打不开
   //    · locale                     ← 跟随浏览器
   //    · check_card_proxy           ← 旧 API 字段，已过时
   //
@@ -1351,12 +1352,10 @@
     // hosted 模式：响应直接给 pay.openai.com/c/pay/cs_xxx#fid=xxx 完整长链。
     // 同一个 checkout_session_id 也能拼出 chatgpt.com 内部 wrapper。
     const data = await postCheckout({
-      entry_point: 'all_plans_pricing_modal',
       plan_name: 'chatgptplusplan',
       checkout_ui_mode: 'hosted',
       billing_details: { country: profile.country, currency: profile.currency },
       cancel_url: CANCEL_URL,
-      promo_campaign: { promo_campaign_id: 'plus-1-month-free', is_coupon_from_query_param: false },
     }, token, buildAcceptLanguage(profile.locale));
     const urls = await buildLongLinkUrls(data, profile.country, profile.locale);
     if (!urls.external && !urls.internal) {
@@ -1368,7 +1367,6 @@
     const token = await resolveAccessToken();
     const country = opts.country || 'US';
     const body = {
-      entry_point: 'team_workspace_purchase_modal',
       plan_name: 'chatgptteamplan',
       checkout_ui_mode: 'hosted',
       billing_details: { country: country, currency: opts.currency || 'USD' },
