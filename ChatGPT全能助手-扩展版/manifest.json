@@ -36,13 +36,23 @@
   ],
   "permissions": [
     "contextMenus",
-    "activeTab"
+    "activeTab",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://api.stripe.com/*"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "strip_stripe_origin",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "cknb-chatgpt-toolbox@1837620622.github.io",

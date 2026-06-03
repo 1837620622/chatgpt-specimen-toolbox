@@ -379,6 +379,10 @@
   }
 
   // 第 2 步：调 Stripe payment_pages init，返回解析后的 JSON
+  //   跨域说明：content script 的 fetch 受 chatgpt.com 同源策略限制，
+  //   所以通过 stripeFetch → background SW 代发（SW 持有 api.stripe.com
+  //   的 host_permissions）。manifest 里的 declarativeNetRequest 静态规则
+  //   会在网络层剥离发往 api.stripe.com 请求的 Origin 头，避免 Stripe 403。
   async function stripeInit(csId, pk, locale) {
     const url = STRIPE_INIT_BASE + encodeURIComponent(csId) + '/init';
     const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
@@ -403,13 +407,29 @@
     const sid = (data && (data.checkout_session_id || '').trim()) || extractSessionIdFromAnyUrl(data);
     if (!sid) return base;  // 连 session id 都没有，无从打 Stripe，直接退回旧逻辑
     const pk = (data && (data.publishable_key || '').trim()) || DEFAULT_STRIPE_PK;
+    // 调试日志：打印 OpenAI checkout 响应里跟长链相关的所有字段
+    try { console.log('[' + NS + '] 长链引擎 Step 1 响应字段:', JSON.stringify({
+      checkout_session_id: data.checkout_session_id ? '有' : '无',
+      publishable_key: data.publishable_key ? (data.publishable_key.slice(0, 20) + '…') : '无',
+      url: data.url || '无',
+      client_secret: data.client_secret ? '有(' + data.client_secret.length + '字符)' : '无',
+      processor_entity: data.processor_entity || '无',
+    })); } catch (_) {}
     try {
+      console.log('[' + NS + '] 长链引擎 Step 2: 调 Stripe init, cs_id=' + sid.slice(0, 20) + '…');
       const sd = await stripeInit(sid, pk, locale);
+      // 调试日志：打印 Stripe init 响应的所有顶层 key，方便排查字段名变化
+      try { console.log('[' + NS + '] Stripe init 响应 keys:', Object.keys(sd || {}).join(', '));
+        console.log('[' + NS + '] Stripe init hosted url 候选:', JSON.stringify({
+          stripe_hosted_url: (sd.stripe_hosted_url || '').slice(0, 80) || '无',
+          hosted_url: (sd.hosted_url || '').slice(0, 80) || '无',
+          url: (sd.url || '').slice(0, 80) || '无',
+        }));
+      } catch (_) {}
       let hosted = sd.stripe_hosted_url || sd.hosted_url || sd.url || '';
-      // init 没回 hosted url 时，退一步用 client_secret 拼 checkout.stripe.com 片段
       if (!hosted) {
-        const frag = fragmentFromClientSecret(data.client_secret, sid);
-        if (frag) hosted = 'https://checkout.stripe.com/c/pay/' + sid + frag;
+        // init 没回 hosted url —— 打印完整响应帮助定位
+        try { console.warn('[' + NS + '] Stripe init 没返回 hosted URL! 完整响应:', JSON.stringify(sd).slice(0, 500)); } catch (_) {}
       }
       // 第 3 步：host 重写 checkout.stripe.com → pay.openai.com
       const external = hosted
@@ -420,8 +440,10 @@
         : (base.external && base.external.indexOf('pay.openai.com') >= 0 ? base.external.replace('pay.openai.com', 'checkout.stripe.com') : base.external);
       return { external: external || base.external, internal: base.internal, stripe: stripeMirror, cs_id: sid };
     } catch (e) {
-      // Stripe init 失败不致命：退回旧版逻辑，至少不比 v2.3.x 差
-      try { console.warn('[' + NS + '] Stripe init 失败，回退旧版取链：' + ((e && e.message) || e)); } catch (_) {}
+      // Stripe init 失败：打印详细错误以便定位是网络/CORS/响应格式问题
+      try { console.warn('[' + NS + '] Stripe init 失败，回退旧版取链：' + ((e && e.message) || e));
+        console.warn('[' + NS + '] Stripe init 错误堆栈:', (e && e.stack) || '无堆栈');
+      } catch (_) {}
       return base;
     }
   }

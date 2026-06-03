@@ -394,6 +394,9 @@
   }
 
   // 第 2 步：调 Stripe payment_pages init，返回解析后的 JSON
+  //   油猴版用 GM_xmlhttpRequest 直接绕过浏览器同源限制（脚本头部已
+  //   @connect api.stripe.com 声明白名单）；GM 不可用时降级普通 fetch。
+  //   GM_xmlhttpRequest 不发 Origin 头，Stripe 不会 403。
   async function stripeInit(csId, pk, locale) {
     const url = STRIPE_INIT_BASE + encodeURIComponent(csId) + '/init';
     const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
