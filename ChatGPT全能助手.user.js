@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.5.1
-// @description  ChatGPT Session 一键导出 9 种主流格式 + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.1：代充封控提示改为购买成品号；移除批量生成（单区/自定义）；中英双语按时区自动切换。
+// @version      2.5.2
+// @description  ChatGPT Session 一键导出 9 种主流格式 + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.2：语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -28,7 +28,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.5.1';
+  const VERSION = '2.5.2';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -80,46 +80,59 @@
   // 用户责任：自己挂日本梯子让出口 IP=JP（脚本无法控制浏览器出口 IP）
   const PLUS_PROFILES = {
     // ─── 欧元区 PayPal 备选池 ─────────────────────────────────────
-    //   全部用 EUR 币种，理论上每个国家的 hosted checkout 页面都会
-    //   显示 PayPal。当 OpenAI / Stripe 临时调整某国时换下一国即可。
-    paypal_de: { label: 'PayPal · 德国',     country: 'DE', currency: 'EUR', code: 'DE', note: '欧元区首选 · 常见 PayPal 入口' },
-    paypal_fr: { label: 'PayPal · 法国',     country: 'FR', currency: 'EUR', code: 'FR', note: '欧元区备选 · 德区拒卡时优先换法区' },
-    paypal_it: { label: 'PayPal · 意大利',   country: 'IT', currency: 'EUR', code: 'IT', note: '欧元区备选 · 2026 新增' },
-    paypal_es: { label: 'PayPal · 西班牙',   country: 'ES', currency: 'EUR', code: 'ES', note: '欧元区备选 · 西卡友好' },
-    paypal_nl: { label: 'PayPal · 荷兰',     country: 'NL', currency: 'EUR', code: 'NL', note: '欧元区备选 · iDEAL + PayPal' },
-    paypal_be: { label: 'PayPal · 比利时',   country: 'BE', currency: 'EUR', code: 'BE', note: '欧元区备选 · Bancontact 区' },
-    paypal_at: { label: 'PayPal · 奥地利',   country: 'AT', currency: 'EUR', code: 'AT', note: '欧元区备选 · EPS 区' },
-    paypal_pt: { label: 'PayPal · 葡萄牙',   country: 'PT', currency: 'EUR', code: 'PT', note: '欧元区备选 · 冷门可用' },
-    paypal_ie: { label: 'PayPal · 爱尔兰',   country: 'IE', currency: 'EUR', code: 'IE', note: '欧元区备选 · 英语界面' },
+    //   全部用 EUR 币种；某国映射被调整时换下一国即可。label/note 提供中英对照。
+    paypal_de: { label: 'PayPal · 德国',   labelEn: 'PayPal · Germany',   country: 'DE', currency: 'EUR', code: 'DE', note: '欧元区常用 · 可能显示 PayPal', noteEn: 'Eurozone · PayPal often listed' },
+    paypal_fr: { label: 'PayPal · 法国',   labelEn: 'PayPal · France',    country: 'FR', currency: 'EUR', code: 'FR', note: '欧元区备选 · 德区拒卡时可换', noteEn: 'Eurozone alt · try if DE declines' },
+    paypal_it: { label: 'PayPal · 意大利', labelEn: 'PayPal · Italy',     country: 'IT', currency: 'EUR', code: 'IT', note: '欧元区备选', noteEn: 'Eurozone alternative' },
+    paypal_es: { label: 'PayPal · 西班牙', labelEn: 'PayPal · Spain',     country: 'ES', currency: 'EUR', code: 'ES', note: '欧元区备选', noteEn: 'Eurozone alternative' },
+    paypal_nl: { label: 'PayPal · 荷兰',   labelEn: 'PayPal · Netherlands', country: 'NL', currency: 'EUR', code: 'NL', note: '欧元区备选 · 可能含 iDEAL', noteEn: 'Eurozone · may include iDEAL' },
+    paypal_be: { label: 'PayPal · 比利时', labelEn: 'PayPal · Belgium',   country: 'BE', currency: 'EUR', code: 'BE', note: '欧元区备选 · 可能含 Bancontact', noteEn: 'Eurozone · may include Bancontact' },
+    paypal_at: { label: 'PayPal · 奥地利', labelEn: 'PayPal · Austria',   country: 'AT', currency: 'EUR', code: 'AT', note: '欧元区备选 · 可能含 EPS', noteEn: 'Eurozone · may include EPS' },
+    paypal_pt: { label: 'PayPal · 葡萄牙', labelEn: 'PayPal · Portugal',  country: 'PT', currency: 'EUR', code: 'PT', note: '欧元区备选 · 使用较少', noteEn: 'Eurozone · less common' },
+    paypal_ie: { label: 'PayPal · 爱尔兰', labelEn: 'PayPal · Ireland',   country: 'IE', currency: 'EUR', code: 'IE', note: '欧元区备选 · 英语界面较多', noteEn: 'Eurozone · often English UI' },
     // ─── 非 PayPal 通道 ──────────────────────────────────────────
-    direct:    { label: '日区直绑 · JPY',    country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（不走 PayPal，需真日卡）' },
-    gopay:     { label: 'GoPay · 印尼',      country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 风控较严，封号风险高' },
-    // ─── 本地即时支付通道 · 印度 UPI / 巴西 PIX ────────────────────
-    //   依据 OpenAI Help「Multi-currency billing」官方说明：
-    //     · UPI（印度统一支付接口）对 Go / Plus 计划开放，账单币种必须 INR 卢比
-    //     · PIX（巴西央行即时转账）对 Go / Plus / Pro 计划开放，账单币种必须 BRL 雷亚尔
-    //   二者都是绑本地银行账户、扫码秒到的国民级支付，全程不需要信用卡。
-    //   country/currency 决定支付页币种与默认支付方式，locale 字段单独控制界面语言，
-    //   0 元试用资格照旧只看出口 IP。locale 已对照 Stripe Checkout 合法语言标签校验：
-    //     · 印度无 en-IN / 印地语界面，统一用 en（英语 · 印度商业通用语）
-    //     · 巴西用 pt-BR（巴西葡萄牙语 · 区别于葡萄牙的 pt）
-    //   订阅扣款机制：UPI 走 UPI AutoPay e-mandate、PIX 走 Pix Automatico mandate，
-    //   均为 OpenAI 官方对 Plus 月度订阅开放的合规循环代扣。
-    upi_in:    { label: 'UPI · 印度',        country: 'IN', currency: 'INR', code: 'IN', locale: 'en',    note: '印度 UPI 即时支付 · 卢比区 · 英文支付页 · 绑银行账户扫码秒付 · UPI AutoPay 撑月度订阅 · OpenAI 官方对 Plus 开放' },
-    pix_br:    { label: 'PIX · 巴西',        country: 'BR', currency: 'BRL', code: 'BR', locale: 'pt-BR', note: '巴西 PIX 即时转账 · 雷亚尔区 · 葡语支付页 · 扫码或粘贴码秒到账 · Pix Automatico 撑月度订阅 · OpenAI 官方对 Plus 开放' },
-    paypal_gb: { label: 'PayPal · 英国',     country: 'GB', currency: 'GBP', code: 'GB', note: '英镑区 · PayPal 也常出现' },
-    // 兜底 · 美区美元 · OpenAI 默认区域 · 通常不显示 PayPal 但生成最稳
-    us_default:{ label: '美区兜底 · USD',    country: 'US', currency: 'USD', code: 'US', note: 'OpenAI 默认区域 · 通常无 PayPal 入口但卡直付最稳 · 欧元区全失败时的最后兜底' },
+    direct:    { label: '日区直绑 · JPY',  labelEn: 'Japan direct · JPY', country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（非 PayPal，需可用日区卡）', noteEn: 'JP card / Wise direct (not PayPal)' },
+    gopay:     { label: 'GoPay · 印尼',    labelEn: 'GoPay · Indonesia',  country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 风控较严，封号风险高', noteEn: 'Indonesia GoPay · higher risk of lock' },
+    // ─── 本地即时支付 · 印度 UPI / 巴西 PIX ───────────────────────
+    //   依据 OpenAI Help「Multi-currency billing」：账单币种须匹配当地支付方式。
+    //   country/currency 决定支付页币种与默认支付方式，locale 控制界面语言；
+    //   试用资格仍只看出口 IP。locale 已对照 Stripe Checkout 合法标签校验。
+    upi_in:    { label: 'UPI · 印度',      labelEn: 'UPI · India',        country: 'IN', currency: 'INR', code: 'IN', locale: 'en',    note: '印度 UPI · INR · 需本地银行能力 · 非万能通道', noteEn: 'India UPI · INR · local bank required · not universal' },
+    pix_br:    { label: 'PIX · 巴西',      labelEn: 'PIX · Brazil',       country: 'BR', currency: 'BRL', code: 'BR', locale: 'pt-BR', note: '巴西 PIX · BRL · 需本地支付能力 · 非万能通道', noteEn: 'Brazil PIX · BRL · local rails required · not universal' },
+    paypal_gb: { label: 'PayPal · 英国',   labelEn: 'PayPal · UK',        country: 'GB', currency: 'GBP', code: 'GB', note: '英镑区 · 有时显示 PayPal', noteEn: 'GBP zone · PayPal sometimes listed' },
+    // 兜底 · 美区美元 · OpenAI 默认区域
+    us_default:{ label: '美区备选 · USD',  labelEn: 'US fallback · USD',  country: 'US', currency: 'USD', code: 'US', note: 'OpenAI 默认区域 · 多为卡直付 · 欧元区失败时的备选', noteEn: 'OpenAI default · card-first · fallback if EU fails' },
   };
+  function profileLabel(p) {
+    if (!p) return '';
+    if (state.lang === 'en' && p.labelEn) return p.labelEn;
+    return p.label || '';
+  }
+  function profileNote(p) {
+    if (!p) return '';
+    if (state.lang === 'en' && p.noteEn) return p.noteEn;
+    return p.note || '';
+  }
 
   function loadSettings() {
-    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; }
-    catch (e) { return {}; }
+    try {
+      const o = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+      // 历史版本曾把 customToken 写入 localStorage；启动时强制剔除
+      if (o && Object.prototype.hasOwnProperty.call(o, 'plusCustomToken')) {
+        delete o.plusCustomToken;
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(o)); } catch (e2) {}
+      }
+      return o;
+    } catch (e) { return {}; }
   }
   function saveSettings(patch) {
     try {
       const cur = loadSettings();
-      const next = Object.assign({}, cur, patch);
+      const safePatch = Object.assign({}, patch || {});
+      // 禁止任何路径把 access_token 写进页面 localStorage
+      delete safePatch.plusCustomToken;
+      const next = Object.assign({}, cur, safePatch);
+      delete next.plusCustomToken;
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
       return next;
     } catch (e) { return null; }
@@ -127,23 +140,36 @@
 
 
   // ──────────────────────────────────────────────────────────
-  //  i18n · 中英双语 · 按时区自动切换 · 可手动覆盖
-  //  · 中文时区（中国大陆 / 港澳台 / 新加坡）→ zh
-  //  · 其他时区 → en
-  //  · 用户手动点语言按钮后写入 localStorage，优先于时区
+  //  i18n · 中英双语 · 按时区 / 浏览器语言自动切换 · 可手动覆盖
+  //  · 中文时区（中国大陆 / 港澳台 / 新加坡 + 历史别名）→ zh
+  //  · 非中文时区但浏览器首选语言为 zh* → zh（海外华人）
+  //  · 其他 → en
+  //  · 用户手动点语言按钮后写入 localStorage，优先于自动检测
   // ──────────────────────────────────────────────────────────
   const ZH_TIMEZONES = {
     'Asia/Shanghai': 1, 'Asia/Chongqing': 1, 'Asia/Harbin': 1, 'Asia/Urumqi': 1,
-    'Asia/Hong_Kong': 1, 'Asia/Macau': 1, 'Asia/Taipei': 1, 'Asia/Singapore': 1,
-    'Asia/Macao': 1,
+    'Asia/Kashgar': 1, 'Asia/Hong_Kong': 1, 'Asia/Macau': 1, 'Asia/Macao': 1,
+    'Asia/Taipei': 1, 'Asia/Singapore': 1,
+    // 历史 / 系统别名（部分旧环境仍会返回）
+    'PRC': 1, 'Hongkong': 1, 'Singapore': 1,
   };
   function detectLangFromTimezone() {
     try {
       const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
       if (ZH_TIMEZONES[tz]) return 'zh';
       // 兜底：部分环境时区字符串变体
-      if (/Asia\/(Shanghai|Chongqing|Harbin|Urumqi|Hong_Kong|Macau|Macao|Taipei|Singapore)/i.test(tz)) return 'zh';
+      if (/Asia\/(Shanghai|Chongqing|Harbin|Urumqi|Kashgar|Hong_Kong|Macau|Macao|Taipei|Singapore)/i.test(tz)) return 'zh';
+      if (/^(PRC|Hongkong|Singapore)$/i.test(tz)) return 'zh';
     } catch (e) {}
+    // 时区非中文区：浏览器 UI 语言为中文时仍默认中文
+    try {
+      const list = (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.length)
+        ? navigator.languages
+        : [ (typeof navigator !== 'undefined' && (navigator.language || navigator.userLanguage)) || '' ];
+      for (let i = 0; i < list.length; i++) {
+        if (/^zh\b/i.test(String(list[i] || ''))) return 'zh';
+      }
+    } catch (e2) {}
     return 'en';
   }
   function resolveInitialLang(persistedLang, langManual) {
@@ -170,18 +196,46 @@
       'tab.team': 'Team 订阅',
       'tab.imp': '导入 · 转换',
       'notice.title': '代充已封控 · 请购买成品号',
-      'notice.sub': '当前代充渠道风控严重、已不可靠。请微信联系 <b style="color:#ff5722">传康KK</b>（vx: <b style="color:#ff5722">1837620622</b>）本地购买成品号。',
+      'notice.sub': '当前代充渠道风控严重、已不可靠。请微信联系 <b style="color:#ff5722">传康KK</b>（vx: <b style="color:#ff5722">1837620622</b>）购买成品号。<br><b style="color:#ff5722">加好友请备注「购买成品号」· 无无偿服务 · 仅付费业务</b>。',
       'notice.toggleOpen': '购买说明',
       'notice.toggleClose': '收起说明',
       'notice.detailTitle': '为什么不能再走代充？',
       'notice.detailP1': 'OpenAI / 支付通道近期对代充、灰产卡密与批量试用做了更严的风控。旧版「低价代充 / PayPal 0 元试用」路径成功率极低，且容易导致账号异常。',
-      'notice.detailTitle2': '推荐方案：本地购买成品号',
-      'notice.detailP2': '直接联系作者 <b>传康KK</b>，微信：<b style="color:#ff5722">1837620622</b>。说明你需要的规格（Plus / Team / 时长等），购买已开通好的成品号，省去代充踩坑。',
+      'notice.detailTitle2': '推荐方案：微信购买成品号（付费）',
+      'notice.detailP2': '微信添加 <b>传康KK</b>：<b style="color:#ff5722">1837620622</b>。<b style="color:#ff5722">加好友时必须备注「购买成品号」</b>，并说明规格（Plus / Team / 时长等）。<b style="color:#ff5722">无无偿服务、不提供免费代充 / 白嫖</b>，仅付费出售已开通成品号。',
       'notice.detailTitle3': '本工具还能做什么？',
-      'notice.detailP3': 'Session 导出 9 种格式、反向导入互转、以及官方 Plus / Team 支付链接生成（自用 / 研究场景）仍然可用。需要稳定账号时，优先走成品号。',
-      'notice.footer': '联系微信 · 传康KK · 1837620622',
-      'notice.copyWx': '复制微信号',
-      'notice.copiedWx': '已复制微信号 1837620622',
+      'notice.detailP3': '本开源工具本身免费：Session 导出 9 种格式、反向导入互转、官方 Plus / Team 支付链接单条生成（自用 / 研究）仍可用。需要稳定成品账号时走付费购买；微信咨询成品号 <b style="color:#ff5722">不提供无偿服务</b>。',
+      'notice.footer': '微信 传康KK · 1837620622 · 加好友请备注「购买成品号」· 无无偿服务',
+      'notice.copyWx': '复制微信号（备注：购买成品号）',
+      'notice.copiedWx': '已复制 1837620622 · 加好友请备注「购买成品号」· 无无偿服务',
+      'notice.paidNote': '加好友请备注「购买成品号」· 无无偿服务',
+      'plus.sessionSrc': 'Session 来源',
+      'plus.sessionHint': '默认用当前登录账号 · 也可粘贴别号 session 生成',
+      'plus.sessionAuto': '当前登录 Session（自动）',
+      'plus.sessionCustom': '自定义 Session（粘贴）',
+      'plus.regionPick': '选择支付区域',
+      'plus.regionHint': ' 个预设 · 点选单个区域生成（一次只生成一条，后链会使前链失效）',
+      'plus.customTitle': '自定义 country / currency',
+      'plus.customHint': '预设全失效时用这个',
+      'plus.customGen': '用自定义参数生成',
+      'plus.clear': '清空',
+      'plus.tipHtml': '<b>试用资格与出口 IP 相关</b> · 需自行配置代理/网络环境 · country 只影响支付页语言、币种与默认支付方式 · 欧元区常显示 PayPal、日区常显示 Konbini、美区偏卡直付。<br><b style="color:#ff5722">OpenAI 会定期调整可用支付方式映射</b>，某国当下无 PayPal 入口时，可依次试欧元区其他国家或英国。',
+      'plus.busyGeneric': '正在生成链接…',
+      'plus.busyNamed': '正在生成 {name} 链接…',
+      'plus.busyCustom': '用 {cc}/{cu} 生成…',
+      'plus.genOk': 'Plus 链接生成成功',
+      'plus.customOk': '自定义链接生成成功',
+      'plus.busyBlocked': '生成中，请稍候',
+      'plus.copyExt': '已复制外部长链',
+      'plus.copyIntl': '已复制内部短链',
+      'plus.extLabel': '① 外部 Stripe 长链',
+      'plus.extSub': 'pay.openai.com · 可在独立浏览器环境打开',
+      'plus.intlLabel': '② 内部 ChatGPT 短链',
+      'plus.intlSub': 'chatgpt.com · 仅当前登录账号当前浏览器可用',
+      'plus.copyLink': '复制此链接',
+      'plus.openLink': '新标签打开',
+      'plus.noLink': '未能拿到任何链接',
+      'plus.billingFallback': '区域账单',
     },
     en: {
       'fab.label': 'Toolbox',
@@ -202,20 +256,57 @@
       'tab.team': 'Team',
       'tab.imp': 'Import · Convert',
       'notice.title': 'Proxy top-up blocked · Buy finished accounts',
-      'notice.sub': 'Proxy recharge is under heavy risk control and no longer reliable. Contact <b style="color:#ff5722">传康KK</b> on WeChat (<b style="color:#ff5722">1837620622</b>) to buy ready-made accounts locally.',
+      'notice.sub': 'Proxy recharge is under heavy risk control and no longer reliable. Contact <b style="color:#ff5722">传康KK</b> on WeChat (<b style="color:#ff5722">1837620622</b>) to buy ready-made accounts.<br><b style="color:#ff5722">Add with remark “Buy finished account” · No free service · Paid only</b>.',
       'notice.toggleOpen': 'How to buy',
       'notice.toggleClose': 'Collapse',
       'notice.detailTitle': 'Why proxy top-up no longer works',
       'notice.detailP1': 'OpenAI and payment providers tightened risk controls on proxy top-ups, grey-market cards, and mass free trials. The old cheap PayPal trial path rarely succeeds and may put accounts at risk.',
-      'notice.detailTitle2': 'Recommended: buy finished accounts',
-      'notice.detailP2': 'Contact author <b>传康KK</b> on WeChat: <b style="color:#ff5722">1837620622</b>. Tell them the plan you need (Plus / Team / duration). Buy a ready-made account instead of fighting broken proxy channels.',
+      'notice.detailTitle2': 'Recommended: buy finished accounts (paid)',
+      'notice.detailP2': 'Add <b>传康KK</b> on WeChat: <b style="color:#ff5722">1837620622</b>. <b style="color:#ff5722">When adding, set remark to “Buy finished account”</b> and state the plan (Plus / Team / duration). <b style="color:#ff5722">No free service</b> — paid ready-made accounts only; no free top-up or freebies.',
       'notice.detailTitle3': 'What this tool still does',
-      'notice.detailP3': 'Session export (9 formats), reverse import conversion, and official Plus / Team checkout link generation still work for personal / research use. For a stable account, prefer finished products.',
-      'notice.footer': 'WeChat · 传康KK · 1837620622',
-      'notice.copyWx': 'Copy WeChat ID',
-      'notice.copiedWx': 'Copied WeChat ID 1837620622',
+      'notice.detailP3': 'This open-source tool itself is free: 9 export formats, reverse import, and single official Plus / Team checkout links for personal / research use. For ready-made accounts, contact WeChat for <b style="color:#ff5722">paid purchase only — no free service</b>.',
+      'notice.footer': 'WeChat 传康KK · 1837620622 · Remark: Buy finished account · No free service',
+      'notice.copyWx': 'Copy WeChat (remark: Buy finished account)',
+      'notice.copiedWx': 'Copied 1837620622 · Add with remark “Buy finished account” · No free service',
+      'notice.paidNote': 'Remark: Buy finished account · No free service',
+      'plus.sessionSrc': 'Session source',
+      'plus.sessionHint': 'Default: current login · or paste another session',
+      'plus.sessionAuto': 'Current login session (auto)',
+      'plus.sessionCustom': 'Custom session (paste)',
+      'plus.regionPick': 'Payment region',
+      'plus.regionHint': ' presets · generate one at a time (a new link invalidates the previous)',
+      'plus.customTitle': 'Custom country / currency',
+      'plus.customHint': 'Use when all presets fail',
+      'plus.customGen': 'Generate with custom params',
+      'plus.clear': 'Clear',
+      'plus.tipHtml': '<b>Trial eligibility depends on your exit IP</b> · configure proxy/network yourself · country only affects checkout locale, currency, and default payment methods · Eurozone often shows PayPal, JP often Konbini, US leans card.<br><b style="color:#ff5722">OpenAI periodically changes available methods</b>; if PayPal is missing in one country, try other Eurozone countries or the UK.',
+      'plus.busyGeneric': 'Generating link…',
+      'plus.busyNamed': 'Generating {name} link…',
+      'plus.busyCustom': 'Generating with {cc}/{cu}…',
+      'plus.genOk': 'Plus link generated',
+      'plus.customOk': 'Custom link generated',
+      'plus.busyBlocked': 'Generation in progress…',
+      'plus.copyExt': 'Copied external link',
+      'plus.copyIntl': 'Copied internal link',
+      'plus.extLabel': '① External Stripe link',
+      'plus.extSub': 'pay.openai.com · open in a standalone browser profile',
+      'plus.intlLabel': '② Internal ChatGPT link',
+      'plus.intlSub': 'chatgpt.com · current account & browser only',
+      'plus.copyLink': 'Copy this link',
+      'plus.openLink': 'Open in new tab',
+      'plus.noLink': 'No link returned',
+      'plus.billingFallback': 'billing region',
     },
   };
+  function tFill(key, vars) {
+    let s = t(key);
+    if (vars) {
+      Object.keys(vars).forEach(function(k) {
+        s = s.split('{' + k + '}').join(String(vars[k]));
+      });
+    }
+    return s;
+  }
   function t(key) {
     const pack = I18N[state.lang] || I18N.zh;
     if (pack[key] != null) return pack[key];
@@ -289,14 +380,18 @@
     auth: { exports: null, ctx: null, currentTargetId: 'auth', loading: false },
     plus: {
       lastUrl: '', loading: false,
+      // 教程详情是否展开 · 仅内存态；语言切换 / refreshBody 后由 renderPlus 恢复
+      tutorOpen: false,
+      // 生成中展示文案 · 中途 refreshBody 后由 restoreTabState 重绘
+      busyLabel: '',
       // 自定义 country/currency 输入框（持久化，方便用户记住最近一次试的组合）
       customCountry: persisted.plusCustomCountry || '',
       customCurrency: persisted.plusCustomCurrency || '',
       // Token 来源：'session'（当前网页）/ 'custom'（用户粘贴）
-      //   tokenSource + customToken 都持久化到 localStorage，下次打开还能用
-      //   （仅你自己的浏览器本地，从未上传任何服务端）
+      //   tokenSource 可持久化；customToken 仅内存，不写 localStorage
+      //   （页面 localStorage 与 chatgpt.com 同源脚本共享，持久化 access_token 有被 XSS 读走风险）
       tokenSource: persisted.plusTokenSource || 'session',
-      customToken: persisted.plusCustomToken || '',
+      customToken: '',
     },
     team: {
       lastLinks: null, loading: false,
@@ -426,6 +521,24 @@
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
   }
+  // 仅允许 https 支付外链写入 href / window.open，防止 javascript: / data: 协议型 XSS
+  function safeCheckoutUrl(url) {
+    if (typeof url !== 'string' || !url) return '';
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'https:') return '';
+      const host = u.hostname;
+      const ok =
+        host === 'pay.openai.com' ||
+        host === 'checkout.stripe.com' ||
+        host === 'chatgpt.com' ||
+        host === 'chat.openai.com' ||
+        host.endsWith('.stripe.com');
+      return ok ? u.toString() : '';
+    } catch (e) {
+      return '';
+    }
+  }
   function humanDuration(seconds) {
     if (seconds <= 0) return '已过期';
     const d = Math.floor(seconds / 86400);
@@ -535,8 +648,13 @@
   // 跨域 POST api.stripe.com：
   //   1) GM_xmlhttpRequest 直连（最快，但不一定能过广告拦截）
   //   2) 自有域名 Workers 代理（兜底，走 codex-bypass.chuankangkk.top）
+  //   URL 必须落在 Stripe payment_pages init 白名单，避免被页面 XSS 借通道打任意 @connect 域
   function stripeFetch(url, headers, body, csId) {
     return new Promise(function (resolve, reject) {
+      if (typeof url !== 'string' || url.indexOf(STRIPE_INIT_BASE) !== 0 || !/\/init$/.test(url)) {
+        reject(new Error('拒绝：非法 Stripe init URL'));
+        return;
+      }
       // ── 方案 A：GM_xmlhttpRequest 直连 Stripe ──
       if (typeof GM_xmlhttpRequest === 'function') {
         console.log('[' + NS + '] stripeFetch A → GM_xmlhttpRequest 直连');
@@ -548,10 +666,14 @@
           timeout: 15000,
           onload: function (res) {
             console.log('[' + NS + '] GM 直连响应:', res.status);
-            // status=0 或空响应说明被拦截器拦了，走代理
-            if (res.status === 0 && !res.responseText) {
-              console.warn('[' + NS + '] GM 直连被拦截 (status=0)，降级走代理');
-              stripeFetchProxy(csId, headers, body).then(resolve, reject);
+            // status=0 / 空响应 / 非 2xx（如 Origin 403）→ 代理兑底
+            if ((res.status === 0 && !res.responseText) || res.status < 200 || res.status >= 300) {
+              console.warn('[' + NS + '] GM 直连不可用 (status=' + res.status + ')，降级走代理');
+              stripeFetchProxy(csId, headers, body).then(resolve, function (err) {
+                // 代理也失败时，若直连至少有 body，回传直连便于排错
+                if (res.status > 0) resolve({ status: res.status, text: res.responseText });
+                else reject(err);
+              });
               return;
             }
             resolve({ status: res.status, text: res.responseText });
@@ -1581,7 +1703,7 @@
   //   external: pay.openai.com/c/pay/{sid}#fid=xxx —— Stripe 长链
   //     · standalone 不依赖 ChatGPT session
   //     · 可以在指纹浏览器 / 美国 IP / 任意干净环境打开
-  //     · 用户主要使用场景（薅 PayPal 试用、给别人付款）
+  //     · 典型场景：独立浏览器配置 / 干净环境打开
   //   internal: chatgpt.com/checkout/openai_ie/{sid} —— wrapper 短链
   //     · 必须在当前账号当前浏览器打开（session cookie 自动认证）
   //     · 备选：当前账号自己付时用
@@ -2099,18 +2221,21 @@
     ].join('');
   }
   function renderPlus() {
+    const busy = !!state.plus.loading;
+    const tutorOpen = !!state.plus.tutorOpen;
+    const dis = busy ? ' disabled' : '';
     const regions = Object.entries(PLUS_PROFILES).map(function(entry) {
       const k = entry[0], p = entry[1];
       return [
-        '<button class="region" data-plus-region="' + k + '"' + (state.plus.loading ? ' disabled' : '') + '>',
+        '<button class="region" data-plus-region="' + k + '"' + dis + '>',
         '  <div class="region-code">' + p.code + ' · ' + p.currency + '</div>',
-        '  <div class="region-label">' + escapeHtml(p.label) + '</div>',
-        '  <div class="region-meta">' + escapeHtml(p.note || (p.country + ' 区域账单')) + '</div>',
+        '  <div class="region-label">' + escapeHtml(profileLabel(p)) + '</div>',
+        '  <div class="region-meta">' + escapeHtml(profileNote(p) || (p.country + ' ' + t('plus.billingFallback'))) + '</div>',
         '</button>',
       ].join('');
     }).join('');
     return [
-      // 代充封控提示 · 引导购买成品号（v2.5.1）
+      // 代充封控提示 · 引导购买成品号（展开态由 state.plus.tutorOpen 保留）
       '<div class="tutor">',
       '  <div class="tutor-hd">',
       '    <div class="tutor-icon">' + icon('key', 18) + '</div>',
@@ -2118,58 +2243,58 @@
       '      <div class="tutor-title">' + escapeHtml(t('notice.title')) + '</div>',
       '      <div class="tutor-sub">' + t('notice.sub') + '</div>',
       '    </div>',
-      '    <button class="btn sm" data-action="plus-tutorial-toggle" aria-expanded="false">',
-      '      <span class="tutor-toggle-text">' + escapeHtml(t('notice.toggleOpen')) + '</span>',
+      '    <button class="btn sm" data-action="plus-tutorial-toggle" aria-expanded="' + (tutorOpen ? 'true' : 'false') + '">',
+      '      <span class="tutor-toggle-text">' + escapeHtml(t(tutorOpen ? 'notice.toggleClose' : 'notice.toggleOpen')) + '</span>',
       '    </button>',
       '  </div>',
-      '  <div class="tutor-detail" id="' + NS + '-tutor-detail" hidden></div>',
+      '  <div class="tutor-detail" id="' + NS + '-tutor-detail"' + (tutorOpen ? '' : ' hidden') + '>' + (tutorOpen ? renderTutorialDetail() : '') + '</div>',
       '</div>',
 
       // ─── Token 来源切换器（v2.3.4 新增）─────────────────────────
       //   两种模式：① 用当前网页 Session（默认，最方便）
       //            ② 用自定义 access_token（粘贴朋友的 / 别号的 token）
       //   做成 payurl.ark2.cn 那种「外部工具」形态，本地处理零上传。
-      '<div class="lbl">Session 来源<span class="hint">默认用当前登录账号 · 也可粘贴别号 session 生成（payurl.ark2.cn 那种用法）</span></div>',
+      '<div class="lbl">' + escapeHtml(t('plus.sessionSrc')) + '<span class="hint">' + escapeHtml(t('plus.sessionHint')) + '</span></div>',
       '<div class="seg">',
-      '  <button class="seg-item' + (state.plus.tokenSource === 'session' ? ' selected' : '') + '" data-action="plus-token-source" data-token-source="session">',
-      '    ' + icon('shield', 14) + ' <span>当前登录 Session（自动）</span>',
+      '  <button class="seg-item' + (state.plus.tokenSource === 'session' ? ' selected' : '') + '" data-action="plus-token-source" data-token-source="session"' + dis + '>',
+      '    ' + icon('shield', 14) + ' <span>' + escapeHtml(t('plus.sessionAuto')) + '</span>',
       '  </button>',
-      '  <button class="seg-item' + (state.plus.tokenSource === 'custom' ? ' selected' : '') + '" data-action="plus-token-source" data-token-source="custom">',
-      '    ' + icon('key', 14) + ' <span>自定义 Session（粘贴）</span>',
+      '  <button class="seg-item' + (state.plus.tokenSource === 'custom' ? ' selected' : '') + '" data-action="plus-token-source" data-token-source="custom"' + dis + '>',
+      '    ' + icon('key', 14) + ' <span>' + escapeHtml(t('plus.sessionCustom')) + '</span>',
       '  </button>',
       '</div>',
       // 自定义 session 输入框：仅 custom 模式显示
       state.plus.tokenSource === 'custom' ? [
-        '<textarea class="imp-input" id="' + NS + '-plus-token" spellcheck="false" placeholder="粘贴任意账号的 access_token 或完整 session JSON：&#10;&#10;  · access_token JWT 字符串（eyJ... 三段以点号分隔）&#10;  · 带 Bearer 前缀（自动去掉）&#10;  · 整段 session JSON（自动提取 accessToken 字段）&#10;  · auth.json / Sub2API / CPA / Cockpit 等任意格式（自动从嵌套字段挖）&#10;&#10;脚本会自动识别并清洗，全程本地处理零上报">' + escapeHtml(state.plus.customToken || '') + '</textarea>',
+        '<textarea class="imp-input" id="' + NS + '-plus-token" spellcheck="false" ' + (busy ? 'disabled ' : '') + 'placeholder="粘贴任意账号的 access_token 或完整 session JSON：&#10;&#10;  · access_token JWT 字符串（eyJ... 三段以点号分隔）&#10;  · 带 Bearer 前缀（自动去掉）&#10;  · 整段 session JSON（自动提取 accessToken 字段）&#10;  · auth.json / Sub2API / CPA / Cockpit 等任意格式（自动从嵌套字段挖）&#10;&#10;脚本会自动识别并清洗，全程本地处理零上报">' + escapeHtml(state.plus.customToken || '') + '</textarea>',
         '<div class="acts" style="margin-top:6px">',
-        '  <button class="btn ghost sm" data-action="plus-token-paste" title="从剪贴板读">' + icon('copy', 12) + ' <span>读剪贴板</span></button>',
-        '  <button class="btn ghost sm" data-action="plus-token-clear">' + icon('close', 12) + ' <span>清空</span></button>',
-        '  <span class="stat" style="margin-left:auto;padding:0">' + (state.plus.customToken ? ('已粘贴 ' + state.plus.customToken.length + ' 字符') : '尚未粘贴 · 切回当前登录或粘贴后再生成') + '</span>',
+        '  <button class="btn ghost sm" data-action="plus-token-paste" title="从剪贴板读"' + dis + '>' + icon('copy', 12) + ' <span>读剪贴板</span></button>',
+        '  <button class="btn ghost sm" data-action="plus-token-clear"' + dis + '>' + icon('close', 12) + ' <span>' + escapeHtml(t('plus.clear')) + '</span></button>',
+        '  <span class="stat" style="margin-left:auto;padding:0">' + (state.plus.customToken ? ('已粘贴 ' + state.plus.customToken.length + ' 字符 · 仅本次会话') : '尚未粘贴 · 切回当前登录或粘贴后再生成') + '</span>',
         '</div>',
       ].join('') : '',
 
-      '<div class="lbl">选择支付区域<span class="hint">' + Object.keys(PLUS_PROFILES).length + ' 个预设 · 点选单个区域生成（一次只生成一条，后链会使前链失效）</span></div>',
+      '<div class="lbl">' + escapeHtml(t('plus.regionPick')) + '<span class="hint">' + Object.keys(PLUS_PROFILES).length + escapeHtml(t('plus.regionHint')) + '</span></div>',
       '<div class="regions">' + regions + '</div>',
       // 自定义国家/币种 · 当 OpenAI / Stripe 改了预设国家的 PayPal 映射时，
       // 用户能即时切到任意 ISO-3166 alpha-2 + ISO-4217 三字母币种试错。
-      '<div class="lbl" style="margin-top:14px">自定义 country / currency<span class="hint">预设全失效时用这个</span></div>',
+      '<div class="lbl" style="margin-top:14px">' + escapeHtml(t('plus.customTitle')) + '<span class="hint">' + escapeHtml(t('plus.customHint')) + '</span></div>',
       '<div class="grid2">',
       '  <div class="row" style="margin-bottom:0">',
-      '    <label>Country（ISO 2 位）</label>',
-      '    <input class="ipt" id="' + NS + '-plus-cc" value="' + escapeHtml(state.plus.customCountry) + '" placeholder="如 IT / ES / NL / AT / PT / IE / LU / FI">',
+      '    <label>Country（ISO 2）</label>',
+      '    <input class="ipt" id="' + NS + '-plus-cc" value="' + escapeHtml(state.plus.customCountry) + '" placeholder="IT / ES / NL / AT / PT / IE / LU / FI"' + dis + '>',
       '  </div>',
       '  <div class="row" style="margin-bottom:0">',
-      '    <label>Currency（ISO 3 位）</label>',
-      '    <input class="ipt" id="' + NS + '-plus-cu" value="' + escapeHtml(state.plus.customCurrency) + '" placeholder="欧元区填 EUR · 英镑填 GBP">',
+      '    <label>Currency（ISO 3）</label>',
+      '    <input class="ipt" id="' + NS + '-plus-cu" value="' + escapeHtml(state.plus.customCurrency) + '" placeholder="EUR / GBP / USD"' + dis + '>',
       '  </div>',
       '</div>',
       '<div class="acts" style="margin-top:8px">',
-      '  <button class="btn primary" data-action="plus-generate-custom" ' + (state.plus.loading ? 'disabled' : '') + '>',
-      icon('bolt', 14) + ' <span>用自定义参数生成</span>',
+      '  <button class="btn primary" data-action="plus-generate-custom"' + dis + '>',
+      icon('bolt', 14) + ' <span>' + escapeHtml(t('plus.customGen')) + '</span>',
       '  </button>',
-      '  <button class="btn ghost" data-action="plus-reset-custom">' + icon('reset', 14) + ' <span>清空</span></button>',
+      '  <button class="btn ghost" data-action="plus-reset-custom"' + dis + '>' + icon('reset', 14) + ' <span>' + escapeHtml(t('plus.clear')) + '</span></button>',
       '</div>',
-      '<div class="stat"><b>0 元试用资格 = 你浏览器/代理的出口 IP 是日本</b> · 必须自己挂日本梯子 · country 字段只决定支付页 locale 与默认支付方式 · 欧元区显示 PayPal、日区显示 Konbini、美区偏卡直付。<br><b style="color:#ff5722">OpenAI 会定期调整可用支付方式映射</b>，如某国当下没 PayPal 入口，依次试欧元区其他国家或英国。</div>',
+      '<div class="stat">' + t('plus.tipHtml') + '</div>',
       '<div id="' + NS + '-plus-result" style="margin-top:14px;"></div>',
     ].join('');
   }
@@ -2185,7 +2310,7 @@
       '<div class="tutor-step-desc" style="line-height:1.55;margin-bottom:10px">' + t('notice.detailP2') + '</div>',
       '<div class="acts" style="margin:8px 0 12px">',
       '  <button class="btn primary sm" data-action="copy-wechat">' + icon('copy', 12) + ' <span>' + escapeHtml(t('notice.copyWx')) + '</span></button>',
-      '  <span class="stat" style="margin:0;padding:6px 10px">' + escapeHtml(t('hd.wechat')) + ' <b style="color:#ff5722">' + escapeHtml(CONTACT_WECHAT) + '</b> · 传康KK</span>',
+      '  <span class="stat" style="margin:0;padding:6px 10px">' + escapeHtml(t('hd.wechat')) + ' <b style="color:#ff5722">' + escapeHtml(CONTACT_WECHAT) + '</b> · 传康KK · ' + escapeHtml(t('notice.paidNote')) + '</span>',
       '</div>',
       '<div class="tutor-section-title">' + escapeHtml(t('notice.detailTitle3')) + '</div>',
       '<div class="tutor-step-desc" style="line-height:1.55">' + t('notice.detailP3') + '</div>',
@@ -2425,8 +2550,19 @@
     refreshBody();
     restoreTabState();
   }
+  function paintPlusBusy() {
+    const resEl = document.getElementById(NS + '-plus-result');
+    if (!resEl) return;
+    const lbl = state.plus.busyLabel || t('plus.busyGeneric');
+    resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;' + escapeHtml(lbl) + '</div>';
+  }
   function restoreTabState() {
-    if (state.activeTab === 'plus' && state.plus.lastUrl) renderPlusResult(state.plus.lastUrl);
+    // Plus：生成中优先重绘 loading，避免 refreshBody 后回显旧链或空白
+    if (state.activeTab === 'plus') {
+      if (state.plus.loading) paintPlusBusy();
+      else if (state.plus.lastUrl) renderPlusResult(state.plus.lastUrl);
+      // 教程展开态已由 renderPlus 按 state.plus.tutorOpen 内联恢复
+    }
     if (state.activeTab === 'team' && state.team.lastLinks) renderTeamResult(state.team.lastLinks);
     // 导入 Tab 切回时，把已粘贴文本回填到 textarea
     if (state.activeTab === 'imp') {
@@ -2555,13 +2691,11 @@
       if (e.target.value !== state.plus.customCurrency) e.target.value = state.plus.customCurrency;
       saveSettings({ plusCustomCurrency: state.plus.customCurrency });
     }
-    // 自定义 token textarea — 持久化到 localStorage（你的浏览器本地）
+    // 自定义 token textarea — 仅内存，不写 localStorage
     if (e.target && e.target.id === NS + '-plus-token') {
       state.plus.customToken = e.target.value;
-      saveSettings({ plusCustomToken: state.plus.customToken });
-      // 更新右下角字符计数（不全量 refreshBody 以保留 textarea 焦点）
       const stat = document.querySelector('#' + NS + '-body .acts .stat');
-      if (stat) stat.textContent = state.plus.customToken ? ('已粘贴 ' + state.plus.customToken.length + ' 字符 · 已自动保存') : '尚未粘贴';
+      if (stat) stat.textContent = state.plus.customToken ? ('已粘贴 ' + state.plus.customToken.length + ' 字符 · 仅本次会话') : '尚未粘贴';
     }
     // ─── Team 表单字段实时持久化（v2.3.4）─────────────────────────
     //   5 个 input 字段每输入一个字符就同步到 state + saveSettings
@@ -2763,28 +2897,33 @@
     const el = document.getElementById(NS + '-plus-result');
     if (!el) return;
     const norm = (typeof urls === 'string') ? { external: urls, internal: '' } : (urls || {});
-    const ext = norm.external || '';
-    const intl = norm.internal || '';
-    const linkBlock = function(label, sub, url, primary, idx) {
-      if (!url) return '';
-      const safe = escapeHtml(url);
+    // href / open 只认白名单 https 支付域；展示文本仍 escape
+    const ext = safeCheckoutUrl(norm.external || '') || '';
+    const intl = safeCheckoutUrl(norm.internal || '') || '';
+    const extShow = escapeHtml(norm.external || '') || escapeHtml(ext);
+    const intlShow = escapeHtml(norm.internal || '') || escapeHtml(intl);
+    const linkBlock = function(label, sub, href, show, primary, idx) {
+      if (!href && !show) return '';
+      const safeHref = href ? escapeHtml(href) : '#';
+      const safeShow = show || safeHref;
       return [
         '<div class="lbl" style="margin-top:12px">' + escapeHtml(label) + '<span class="hint">' + escapeHtml(sub) + '</span></div>',
-        '<a class="url" href="' + safe + '" target="_blank" rel="noopener">' + safe + '</a>',
-        '<div class="acts">',
-        '  <button class="btn ' + (primary ? 'primary' : '') + '" data-plus-act="copy" data-plus-idx="' + idx + '">' + icon('copy', 14) + ' <span>复制此链接</span></button>',
-        '  <button class="btn" data-plus-act="open" data-plus-idx="' + idx + '">' + icon('extOpen', 14) + ' <span>新标签打开</span></button>',
-        '</div>',
+        href
+          ? ('<a class="url" href="' + safeHref + '" target="_blank" rel="noopener noreferrer">' + safeShow + '</a>')
+          : ('<div class="stat err">链接域名不在白名单，已拦截跳转：' + safeShow + '</div>'),
+        href ? [
+          '<div class="acts">',
+          '  <button class="btn ' + (primary ? 'primary' : '') + '" data-plus-act="copy" data-plus-idx="' + idx + '">' + icon('copy', 14) + ' <span>' + escapeHtml(t('plus.copyLink')) + '</span></button>',
+          '  <button class="btn" data-plus-act="open" data-plus-idx="' + idx + '">' + icon('extOpen', 14) + ' <span>' + escapeHtml(t('plus.openLink')) + '</span></button>',
+          '</div>',
+        ].join('') : '',
       ].join('');
     };
     el.innerHTML = [
-      // 外部 Stripe 长链 —— 主推（在指纹浏览器 / 美国 IP 干净环境打开）
-      linkBlock('① 外部 Stripe 长链', 'pay.openai.com · standalone · 可在指纹浏览器 / 美国 IP 环境打开 · 用户主要场景', ext, true, 0),
-      // 内部 ChatGPT wrapper —— 备选（仅当前账号当前浏览器可用）
-      linkBlock('② 内部 ChatGPT 短链', 'chatgpt.com · 仅当前登录账号当前浏览器可用 · 备选', intl, false, 1),
-      (!ext && !intl) ? '<div class="stat err">未能拿到任何链接</div>' : '',
+      linkBlock(t('plus.extLabel'), t('plus.extSub'), ext, extShow, true, 0),
+      linkBlock(t('plus.intlLabel'), t('plus.intlSub'), intl, intlShow, false, 1),
+      (!norm.external && !norm.internal) ? '<div class="stat err">' + escapeHtml(t('plus.noLink')) + '</div>' : '',
     ].join('');
-    // 事件委托：点 copy/open 时根据 idx 决定用哪条
     el.querySelectorAll('[data-plus-act]').forEach(function(b) {
       b.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -2793,7 +2932,7 @@
         const u = idx === '0' ? ext : intl;
         if (!u) return;
         if (act === 'copy') {
-          copyText(u).then(function() { toast('已复制 ' + (idx === '0' ? '外部长链' : '内部短链'), 'success'); })
+          copyText(u).then(function() { toast(idx === '0' ? t('plus.copyExt') : t('plus.copyIntl'), 'success'); })
                      .catch(function(err) { toast(err.message || String(err), 'error'); });
         } else if (act === 'open') {
           window.open(u, '_blank', 'noopener,noreferrer');
@@ -2801,29 +2940,47 @@
       });
     });
   }
-  // 生成中禁用区域卡 / 自定义按钮，避免连点产生多条 checkout（旧链会失效）
-  function setPlusBusy(busy) {
+  // 生成中禁用区域卡 / 自定义 / 来源切换，避免连点多链或 refresh 冲掉 loading
+  function setPlusBusy(busy, label) {
     state.plus.loading = !!busy;
+    if (busy) {
+      if (label) state.plus.busyLabel = label;
+    } else {
+      state.plus.busyLabel = '';
+    }
     try {
-      document.querySelectorAll('#' + NS + '-modal [data-plus-region]').forEach(function(b) {
+      const root = '#' + NS + '-modal ';
+      document.querySelectorAll(root + '[data-plus-region]').forEach(function(b) {
         b.disabled = !!busy;
       });
-      const customBtn = document.querySelector('#' + NS + '-modal [data-action="plus-generate-custom"]');
-      if (customBtn) customBtn.disabled = !!busy;
+      document.querySelectorAll(
+        root + '[data-action="plus-generate-custom"],' +
+        root + '[data-action="plus-reset-custom"],' +
+        root + '[data-action="plus-token-source"],' +
+        root + '[data-action="plus-token-paste"],' +
+        root + '[data-action="plus-token-clear"]'
+      ).forEach(function(b) { b.disabled = !!busy; });
+      const cc = document.getElementById(NS + '-plus-cc');
+      const cu = document.getElementById(NS + '-plus-cu');
+      const tok = document.getElementById(NS + '-plus-token');
+      if (cc) cc.disabled = !!busy;
+      if (cu) cu.disabled = !!busy;
+      if (tok) tok.disabled = !!busy;
     } catch (e) {}
   }
   async function onPlusGenerate(regionKey) {
     const profile = PLUS_PROFILES[regionKey];
     if (!profile) return;
     if (state.plus.loading) return;
-    setPlusBusy(true);
+    const busyMsg = tFill('plus.busyNamed', { name: profileLabel(profile) });
+    setPlusBusy(true, busyMsg);
+    paintPlusBusy();
     const resEl = document.getElementById(NS + '-plus-result');
-    if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;正在生成 ' + escapeHtml(profile.label) + ' 链接…</div>';
     try {
       const url = await generatePlusLink(profile);
       state.plus.lastUrl = url;
       renderPlusResult(url);
-      toast('Plus 链接生成成功', 'success');
+      toast(t('plus.genOk'), 'success');
     } catch (e) {
       if (resEl) resEl.innerHTML = '<div class="stat err">' + escapeHtml(e.message || String(e)) + '</div>';
       toast(e.message || String(e), 'error', 5000);
@@ -2842,17 +2999,20 @@
     if (!/^[A-Z]{3}$/.test(cu)) { toast('Currency 需要 3 位字母（如 EUR / GBP / USD）', 'error'); return; }
     const profile = {
       label: '自定义 · ' + cc + ' / ' + cu,
+      labelEn: 'Custom · ' + cc + ' / ' + cu,
       country: cc, currency: cu, code: cc,
       note: '自定义参数',
+      noteEn: 'Custom params',
     };
-    setPlusBusy(true);
+    const busyMsg = tFill('plus.busyCustom', { cc: cc, cu: cu });
+    setPlusBusy(true, busyMsg);
+    paintPlusBusy();
     const resEl = document.getElementById(NS + '-plus-result');
-    if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;用 ' + cc + '/' + cu + ' 生成…</div>';
     try {
       const url = await generatePlusLink(profile);
       state.plus.lastUrl = url;
       renderPlusResult(url);
-      toast('自定义链接生成成功', 'success');
+      toast(t('plus.customOk'), 'success');
     } catch (e) {
       if (resEl) resEl.innerHTML = '<div class="stat err">' + escapeHtml(e.message || String(e)) + '</div>';
       toast(e.message || String(e), 'error', 5000);
@@ -2861,26 +3021,31 @@
     }
   }
   function onPlusResetCustom() {
+    if (state.plus.loading) { toast(t('plus.busyBlocked'), 'info'); return; }
     state.plus.customCountry = '';
     state.plus.customCurrency = '';
     saveSettings({ plusCustomCountry: '', plusCustomCurrency: '' });
     refreshBody();
+    restoreTabState();
     toast('已清空自定义参数', 'success');
   }
 
   // ─── Token 来源切换（v2.3.4）─────────────────────────────────
   //   session → custom：展开粘贴区，用户填 token 后才能生成
   //   custom  → session：折叠粘贴区，回到当前网页 session 流程
-  //   切换偏好持久化，textarea 内容也持久化（用户体验优先）
+  //   tokenSource 可持久化；customToken 仅内存（不写 localStorage）
   function onPlusTokenSource(src) {
+    if (state.plus.loading) { toast(t('plus.busyBlocked'), 'info'); return; }
     if (src !== 'session' && src !== 'custom') return;
     if (state.plus.tokenSource === src) return;
     state.plus.tokenSource = src;
     saveSettings({ plusTokenSource: src });
     refreshBody();
+    restoreTabState();
     toast(src === 'custom' ? '已切到自定义 Session 模式' : '已切回当前登录 Session', 'success');
   }
   async function onPlusTokenPaste() {
+    if (state.plus.loading) { toast(t('plus.busyBlocked'), 'info'); return; }
     try {
       if (!navigator.clipboard || !navigator.clipboard.readText) {
         toast('当前浏览器不支持自动读剪贴板，请手动粘贴到文本框', 'error');
@@ -2889,25 +3054,33 @@
       const txt = await navigator.clipboard.readText();
       if (!txt) { toast('剪贴板为空', 'error'); return; }
       state.plus.customToken = txt;
-      saveSettings({ plusCustomToken: txt });
-      const ta = document.getElementById(NS + '-plus-token');
-      if (ta) ta.value = txt;
+      // 不写 localStorage：仅本次会话内存
       // 预校验（不阻塞，仅给反馈）
       try {
-        const t = normalizeCustomToken(txt);
-        toast('已读取并识别 · token 长度 ' + t.length + ' 字符', 'success');
+        const tok = normalizeCustomToken(txt);
+        toast('已读取并识别 · token 长度 ' + tok.length + ' 字符 · 仅本次会话', 'success');
       } catch (e) {
         toast('已粘贴，但格式校验失败：' + (e.message || e), 'info', 4000);
       }
       refreshBody();
+      restoreTabState();
     } catch (e) {
       toast('读取剪贴板失败：' + (e.message || e), 'error');
     }
   }
   function onPlusTokenClear() {
+    if (state.plus.loading) { toast(t('plus.busyBlocked'), 'info'); return; }
     state.plus.customToken = '';
-    saveSettings({ plusCustomToken: '' });
+    // 顺带清掉历史版本残留在 localStorage 里的 plusCustomToken
+    try {
+      const cur = loadSettings();
+      if (cur && Object.prototype.hasOwnProperty.call(cur, 'plusCustomToken')) {
+        delete cur.plusCustomToken;
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur));
+      }
+    } catch (e) {}
     refreshBody();
+    restoreTabState();
     toast('已清空自定义 Session', 'success');
   }
   async function onCopyWechat() {
@@ -2923,12 +3096,14 @@
     if (!detail) return;
     const isOpen = !detail.hasAttribute('hidden');
     if (isOpen) {
+      state.plus.tutorOpen = false;
       detail.setAttribute('hidden', '');
       detail.innerHTML = '';
       btn.setAttribute('aria-expanded', 'false');
       const el = btn.querySelector('.tutor-toggle-text');
       if (el) el.textContent = t('notice.toggleOpen');
     } else {
+      state.plus.tutorOpen = true;
       detail.innerHTML = renderTutorialDetail();
       detail.removeAttribute('hidden');
       btn.setAttribute('aria-expanded', 'true');
@@ -2945,34 +3120,50 @@
   function renderTeamResult(links) {
     const el = document.getElementById(NS + '-team-result');
     if (!el) return;
+    const openai = safeCheckoutUrl(links && links.openai) || '';
+    const stripe = safeCheckoutUrl(links && links.stripe) || '';
+    const openaiShow = escapeHtml((links && links.openai) || '');
+    const stripeShow = escapeHtml((links && links.stripe) || '');
     el.innerHTML = [
       '<div class="lbl" style="margin-top:14px">Team 链接已生成</div>',
       '<div style="font-size:10px;letter-spacing:0.12em;color:#6b6660;margin-bottom:4px">OpenAI 托管</div>',
-      '<a class="url" href="' + escapeHtml(links.openai) + '" target="_blank" rel="noopener">' + escapeHtml(links.openai) + '</a>',
+      openai
+        ? ('<a class="url" href="' + escapeHtml(openai) + '" target="_blank" rel="noopener noreferrer">' + openaiShow + '</a>')
+        : ('<div class="stat err">OpenAI 链接域名不在白名单</div>'),
       '<div style="font-size:10px;letter-spacing:0.12em;color:#6b6660;margin:6px 0 4px">Stripe 直链</div>',
-      '<a class="url" href="' + escapeHtml(links.stripe) + '" target="_blank" rel="noopener">' + escapeHtml(links.stripe) + '</a>',
+      stripe
+        ? ('<a class="url" href="' + escapeHtml(stripe) + '" target="_blank" rel="noopener noreferrer">' + stripeShow + '</a>')
+        : ('<div class="stat err">Stripe 链接域名不在白名单</div>'),
       '<div class="acts" style="margin-top:10px">',
-      '  <button class="btn primary" data-team-act="copy-openai">' + icon('copy', 14) + ' <span>复制 OpenAI</span></button>',
-      '  <button class="btn" data-team-act="copy-stripe">' + icon('copy', 14) + ' <span>复制 Stripe</span></button>',
-      '  <button class="btn ghost" data-team-act="open-openai">' + icon('extOpen', 14) + ' <span>打开</span></button>',
+      '  <button class="btn primary" data-team-act="copy-openai"' + (openai ? '' : ' disabled') + '>' + icon('copy', 14) + ' <span>复制 OpenAI</span></button>',
+      '  <button class="btn" data-team-act="copy-stripe"' + (stripe ? '' : ' disabled') + '>' + icon('copy', 14) + ' <span>复制 Stripe</span></button>',
+      '  <button class="btn ghost" data-team-act="open-openai"' + (openai ? '' : ' disabled') + '>' + icon('extOpen', 14) + ' <span>打开</span></button>',
       '</div>',
     ].join('');
-    el.querySelector('[data-team-act="copy-openai"]').addEventListener('click', async function(e) {
+    const btnOpenAI = el.querySelector('[data-team-act="copy-openai"]');
+    const btnStripe = el.querySelector('[data-team-act="copy-stripe"]');
+    const btnOpen = el.querySelector('[data-team-act="open-openai"]');
+    if (btnOpenAI) btnOpenAI.addEventListener('click', async function(e) {
       e.stopPropagation();
-      try { await copyText(links.openai); toast('已复制 OpenAI 链接', 'success'); }
+      if (!openai) return;
+      try { await copyText(openai); toast('已复制 OpenAI 链接', 'success'); }
       catch (err) { toast(err.message || String(err), 'error'); }
     });
-    el.querySelector('[data-team-act="copy-stripe"]').addEventListener('click', async function(e) {
+    if (btnStripe) btnStripe.addEventListener('click', async function(e) {
       e.stopPropagation();
-      try { await copyText(links.stripe); toast('已复制 Stripe 链接', 'success'); }
+      if (!stripe) return;
+      try { await copyText(stripe); toast('已复制 Stripe 链接', 'success'); }
       catch (err) { toast(err.message || String(err), 'error'); }
     });
-    el.querySelector('[data-team-act="open-openai"]').addEventListener('click', function(e) {
+    if (btnOpen) btnOpen.addEventListener('click', function(e) {
       e.stopPropagation();
-      window.open(links.openai, '_blank', 'noopener,noreferrer');
+      if (!openai) return;
+      window.open(openai, '_blank', 'noopener,noreferrer');
     });
   }
   async function onTeamGenerate() {
+    // 单条语义：生成中禁止并发（连点会产生多条 checkout，旧链失效）
+    if (state.team.loading) return;
     const get = function(id) { return document.getElementById(NS + '-team-' + id); };
     const workspaceName = ((get('workspace') && get('workspace').value) || '我的工作区').trim();
     const seats = (get('seats') && get('seats').value) || '2';

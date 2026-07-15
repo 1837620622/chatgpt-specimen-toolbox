@@ -1,6 +1,6 @@
 # ChatGPT 全能助手 · Specimen（浏览器扩展版）
 
-**版本 2.5.1**（与 `manifest.json` / `content.js` 的 `VERSION` 一致）。
+**版本 2.5.2**（与 `manifest.json` / `content.js` 的 `VERSION` 一致）。
 
 把同名油猴脚本 `ChatGPT全能助手.user.js`（注意后缀是 `.user.js`，不是 `.js`）1:1 移植为 Manifest V3 浏览器扩展。
 Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
@@ -16,7 +16,7 @@ Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
 - **Plus 订阅链接**：15 个区域预设（欧元区 PayPal 池、日区直绑、印尼 GoPay、印度 UPI、巴西 PIX、英区、美区兜底）+ 自定义 country/currency；**仅单条生成**——点选一个区域或自定义参数；**后生成的链接会使先前链接失效**。已移除「批量生成全部区域」「仅批量欧元区 PayPal 池」。
 - **Team 工作区订阅链接**：自定义工作区名、座位数、促销码、国家/币种/周期；字段实时持久化。
 - **v2.5.1**：
-  - Plus 横幅改为「代充已封控 · 请购买成品号」（微信 **传康KK / 1837620622**）；旧版「不到 3 元拿下 PLUS」教程已删除，不再维护。
+  - Plus 横幅改为「代充已封控 · 请购买成品号」（微信 **传康KK / 1837620622**，加好友请备注「购买成品号」· **无无偿服务**）；旧版「不到 3 元拿下 PLUS」教程已删除，不再维护。
   - 外壳 chrome + Plus 横幅/详情中英双语：按系统时区自动切换，面板右上角可手动覆盖并记住偏好。
 - 浮窗位置可拖拽并持久化到 `localStorage`。
 
@@ -55,11 +55,12 @@ ChatGPT全能助手-扩展版/
 
 ## 与油猴版的代码差异
 
-为保证「功能完全一样」，主体逻辑零修改，必要桥接如下：
+功能对齐（导出 / 导入互转 / Plus·Team 单条取链 / 双语外壳 / 代充封控提示）。除下列**预期桥接**外，业务逻辑应与 `ChatGPT全能助手.user.js` 保持同步；改一端时请对照另一端。
 
 1. 头部去掉 `// ==UserScript== ... // ==/UserScript==` 元数据块（扩展不使用）。
 2. IIFE 内部 `init()` 之前追加 `chrome.runtime.onMessage` 监听，用于接收 background.js 转发的 `CKNB_OPEN_MODAL` 消息。
-3. **v2.4.x 长链引擎跨域桥**：油猴版第 2 步（Stripe `payment_pages/{cs}/init`）用 `GM_xmlhttpRequest` 直接跨域发；扩展版 content script 受所在页面 CORS 约束，改为通过 `CKNB_STRIPE_INIT` 消息把 url / headers / body 转交 background service worker 代发（manifest `host_permissions` 含 `https://api.stripe.com/*` 与代理域 `https://codex-bypass.chuankangkk.top/*`），再把响应回传。
+3. **v2.4.x 长链引擎跨域桥**：油猴版第 2 步（Stripe `payment_pages/{cs}/init`）用 `GM_xmlhttpRequest` 直接跨域发；扩展版 content script 受所在页面 CORS 约束，改为通过 `CKNB_STRIPE_INIT` 消息把 url / headers / body 转交 background service worker 代发（manifest `host_permissions` 含 `https://api.stripe.com/*` 与代理域 `https://codex-bypass.chuankangkk.top/*`），再把响应回传。`rules.json` 在网络层剥离发往 Stripe 的 `Origin` 头。
+4. 调试日志文案可略有不同；**取链兜底策略应对齐**（Stripe init 无 hosted URL 时用 `client_secret` 拼片段；整段 init 失败再回退 `buildBothCheckoutUrls`）。
 
 油猴 API 在扩展环境下自动降级：
 
@@ -67,11 +68,11 @@ ChatGPT全能助手-扩展版/
 - `GM_registerMenuCommand` → 由 background.js 用 `chrome.contextMenus` + `chrome.action.onClicked` 等价实现。
 - `GM_xmlhttpRequest`（长链第 2 步跨域）→ 由 background service worker 持主机权限代发，绕过 content script 的 CORS 限制。
 
-## 与主 README 一致的使用约束（v2.5.1）
+## 与主 README 一致的使用约束（v2.5.2）
 
 | 约束 | 说明 |
 |:--|:--|
-| 代充已封控 | 不再提供低价代充 /「不到 3 元拿下 PLUS」教程；成品号联系微信 **传康KK（1837620622）** |
+| 代充已封控 | 不再提供低价代充 /「不到 3 元拿下 PLUS」教程；成品号联系微信 **传康KK（1837620622）**（备注「购买成品号」· **无无偿服务**） |
 | 仅单条生成 | Plus 一次只生成一条；不要连续狂点多个区域 |
 | 后链失效前链 | 新 checkout 生成后，旧链接往往会失效；只用最新一条付款 |
 | 双语范围 | 外壳 + Plus 封控横幅/详情；Auth / Team / 导入正文仍以中文为主 |
@@ -80,7 +81,7 @@ ChatGPT全能助手-扩展版/
 
 ## 作者
 
-- 微信：1837620622（传康KK）
+- 微信：1837620622（传康KK）· 加好友请备注「购买成品号」· **无无偿服务**
 - 邮箱：2040168455@qq.com
 - B 站 / 咸鱼：万能程序员
 - GitHub：https://github.com/1837620622
