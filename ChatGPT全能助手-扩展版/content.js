@@ -10,7 +10,7 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.4.1';
+  const VERSION = '2.5.1';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
@@ -64,7 +64,7 @@
     // ─── 欧元区 PayPal 备选池 ─────────────────────────────────────
     //   全部用 EUR 币种，理论上每个国家的 hosted checkout 页面都会
     //   显示 PayPal。当 OpenAI / Stripe 临时调整某国时换下一国即可。
-    paypal_de: { label: 'PayPal · 德国',     country: 'DE', currency: 'EUR', code: 'DE', note: '教程主推 · 欧元区首选 · 0 刀薅最稳' },
+    paypal_de: { label: 'PayPal · 德国',     country: 'DE', currency: 'EUR', code: 'DE', note: '欧元区首选 · 常见 PayPal 入口' },
     paypal_fr: { label: 'PayPal · 法国',     country: 'FR', currency: 'EUR', code: 'FR', note: '欧元区备选 · 德区拒卡时优先换法区' },
     paypal_it: { label: 'PayPal · 意大利',   country: 'IT', currency: 'EUR', code: 'IT', note: '欧元区备选 · 2026 新增' },
     paypal_es: { label: 'PayPal · 西班牙',   country: 'ES', currency: 'EUR', code: 'ES', note: '欧元区备选 · 西卡友好' },
@@ -75,7 +75,7 @@
     paypal_ie: { label: 'PayPal · 爱尔兰',   country: 'IE', currency: 'EUR', code: 'IE', note: '欧元区备选 · 英语界面' },
     // ─── 非 PayPal 通道 ──────────────────────────────────────────
     direct:    { label: '日区直绑 · JPY',    country: 'JP', currency: 'JPY', code: 'JP', note: '日卡 / Wise 直绑（不走 PayPal，需真日卡）' },
-    gopay:     { label: 'GoPay · 印尼',      country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 教程称已被薅烂封号高发' },
+    gopay:     { label: 'GoPay · 印尼',      country: 'ID', currency: 'IDR', code: 'ID', note: '印尼区 GoPay · 风控较严，封号风险高' },
     // ─── 本地即时支付通道 · 印度 UPI / 巴西 PIX ────────────────────
     //   依据 OpenAI Help「Multi-currency billing」官方说明：
     //     · UPI（印度统一支付接口）对 Go / Plus 计划开放，账单币种必须 INR 卢比
@@ -107,12 +107,170 @@
     } catch (e) { return null; }
   }
 
+
+  // ──────────────────────────────────────────────────────────
+  //  i18n · 中英双语 · 按时区自动切换 · 可手动覆盖
+  //  · 中文时区（中国大陆 / 港澳台 / 新加坡）→ zh
+  //  · 其他时区 → en
+  //  · 用户手动点语言按钮后写入 localStorage，优先于时区
+  // ──────────────────────────────────────────────────────────
+  const ZH_TIMEZONES = {
+    'Asia/Shanghai': 1, 'Asia/Chongqing': 1, 'Asia/Harbin': 1, 'Asia/Urumqi': 1,
+    'Asia/Hong_Kong': 1, 'Asia/Macau': 1, 'Asia/Taipei': 1, 'Asia/Singapore': 1,
+    'Asia/Macao': 1,
+  };
+  function detectLangFromTimezone() {
+    try {
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+      if (ZH_TIMEZONES[tz]) return 'zh';
+      // 兜底：部分环境时区字符串变体
+      if (/Asia\/(Shanghai|Chongqing|Harbin|Urumqi|Hong_Kong|Macau|Macao|Taipei|Singapore)/i.test(tz)) return 'zh';
+    } catch (e) {}
+    return 'en';
+  }
+  function resolveInitialLang(persistedLang, langManual) {
+    if (langManual && (persistedLang === 'zh' || persistedLang === 'en')) return persistedLang;
+    return detectLangFromTimezone();
+  }
+  const I18N = {
+    zh: {
+      'fab.label': '工具箱',
+      'fab.title': 'CKNB ChatGPT 全能助手 · 传康KK-CKNB · 拖动可移位',
+      'hd.mark': 'CKNB · CHATGPT 全能助手',
+      'hd.title': '<em>ChatGPT</em> 全能助手 · 工作台',
+      'hd.author': '作者',
+      'hd.wechat': '微信',
+      'hd.close': '关闭',
+      'hd.lang': 'English',
+      'hd.langTip': '切换到英文',
+      'ft.formats': '9 种导出格式',
+      'ft.regions': '支付区域',
+      'ft.toggle': '切换',
+      'ft.close': '关闭',
+      'tab.auth': '鉴权 · 导出',
+      'tab.plus': 'Plus 订阅',
+      'tab.team': 'Team 订阅',
+      'tab.imp': '导入 · 转换',
+      'notice.title': '代充已封控 · 请购买成品号',
+      'notice.sub': '当前代充渠道风控严重、已不可靠。请微信联系 <b style="color:#ff5722">传康KK</b>（vx: <b style="color:#ff5722">1837620622</b>）本地购买成品号。',
+      'notice.toggleOpen': '购买说明',
+      'notice.toggleClose': '收起说明',
+      'notice.detailTitle': '为什么不能再走代充？',
+      'notice.detailP1': 'OpenAI / 支付通道近期对代充、灰产卡密与批量试用做了更严的风控。旧版「低价代充 / PayPal 0 元试用」路径成功率极低，且容易导致账号异常。',
+      'notice.detailTitle2': '推荐方案：本地购买成品号',
+      'notice.detailP2': '直接联系作者 <b>传康KK</b>，微信：<b style="color:#ff5722">1837620622</b>。说明你需要的规格（Plus / Team / 时长等），购买已开通好的成品号，省去代充踩坑。',
+      'notice.detailTitle3': '本工具还能做什么？',
+      'notice.detailP3': 'Session 导出 9 种格式、反向导入互转、以及官方 Plus / Team 支付链接生成（自用 / 研究场景）仍然可用。需要稳定账号时，优先走成品号。',
+      'notice.footer': '联系微信 · 传康KK · 1837620622',
+      'notice.copyWx': '复制微信号',
+      'notice.copiedWx': '已复制微信号 1837620622',
+    },
+    en: {
+      'fab.label': 'Toolbox',
+      'fab.title': 'CKNB ChatGPT All-in-One · 传康KK-CKNB · Drag to reposition',
+      'hd.mark': 'CKNB · CHATGPT TOOLBOX',
+      'hd.title': '<em>ChatGPT</em> All-in-One · Workbench',
+      'hd.author': 'Author',
+      'hd.wechat': 'WeChat',
+      'hd.close': 'Close',
+      'hd.lang': '中文',
+      'hd.langTip': 'Switch to Chinese',
+      'ft.formats': '9 export formats',
+      'ft.regions': 'payment regions',
+      'ft.toggle': 'Toggle',
+      'ft.close': 'Close',
+      'tab.auth': 'Auth · Export',
+      'tab.plus': 'Plus',
+      'tab.team': 'Team',
+      'tab.imp': 'Import · Convert',
+      'notice.title': 'Proxy top-up blocked · Buy finished accounts',
+      'notice.sub': 'Proxy recharge is under heavy risk control and no longer reliable. Contact <b style="color:#ff5722">传康KK</b> on WeChat (<b style="color:#ff5722">1837620622</b>) to buy ready-made accounts locally.',
+      'notice.toggleOpen': 'How to buy',
+      'notice.toggleClose': 'Collapse',
+      'notice.detailTitle': 'Why proxy top-up no longer works',
+      'notice.detailP1': 'OpenAI and payment providers tightened risk controls on proxy top-ups, grey-market cards, and mass free trials. The old cheap PayPal trial path rarely succeeds and may put accounts at risk.',
+      'notice.detailTitle2': 'Recommended: buy finished accounts',
+      'notice.detailP2': 'Contact author <b>传康KK</b> on WeChat: <b style="color:#ff5722">1837620622</b>. Tell them the plan you need (Plus / Team / duration). Buy a ready-made account instead of fighting broken proxy channels.',
+      'notice.detailTitle3': 'What this tool still does',
+      'notice.detailP3': 'Session export (9 formats), reverse import conversion, and official Plus / Team checkout link generation still work for personal / research use. For a stable account, prefer finished products.',
+      'notice.footer': 'WeChat · 传康KK · 1837620622',
+      'notice.copyWx': 'Copy WeChat ID',
+      'notice.copiedWx': 'Copied WeChat ID 1837620622',
+    },
+  };
+  function t(key) {
+    const pack = I18N[state.lang] || I18N.zh;
+    if (pack[key] != null) return pack[key];
+    if (I18N.zh[key] != null) return I18N.zh[key];
+    return key;
+  }
+  function applyLangChrome() {
+    const fab = document.getElementById(NS + '-fab');
+    if (fab) {
+      fab.title = t('fab.title');
+      const span = fab.querySelector('span');
+      if (span) span.textContent = t('fab.label');
+    }
+    const modal = document.getElementById(NS + '-modal');
+    if (!modal) return;
+    const mark = modal.querySelector('.hd-mark span:last-child');
+    if (mark) mark.textContent = t('hd.mark');
+    const title = modal.querySelector('#' + NS + '-title');
+    if (title) title.innerHTML = t('hd.title');
+    const meta = modal.querySelector('.hd-meta');
+    if (meta) {
+      meta.innerHTML = [
+        '<span>V' + escapeHtml(VERSION) + '</span>',
+        '<span>·</span>',
+        '<span>' + escapeHtml(t('hd.author')) + ' <b>' + escapeHtml(AUTHOR) + '</b></span>',
+        '<span>·</span>',
+        '<span>' + escapeHtml(t('hd.wechat')) + ' <b>' + escapeHtml(CONTACT_WECHAT) + '</b></span>',
+      ].join('');
+    }
+    const langBtn = modal.querySelector('[data-action="toggle-lang"]');
+    if (langBtn) {
+      langBtn.textContent = t('hd.lang');
+      langBtn.title = t('hd.langTip');
+    }
+    const closeBtn = modal.querySelector('[data-action="close"]');
+    if (closeBtn) closeBtn.setAttribute('aria-label', t('hd.close'));
+    modal.querySelectorAll('[data-tab]').forEach(function(b) {
+      const id = b.getAttribute('data-tab');
+      const s = tabSpec(id);
+      b.innerHTML = '<span class="num">' + s.num + '</span><span>' + s.label + '</span>';
+    });
+    const ft = modal.querySelector('.ft');
+    if (ft) {
+      ft.innerHTML = [
+        '<span><b>v' + escapeHtml(VERSION) + ' <span class="sep">·</span> ' + escapeHtml(t('ft.formats')) + ' <span class="sep">·</span> ' + escapeHtml(t('ft.regions')) + '</b></span>',
+        '<span class="kbd-tip"><kbd>⌘ ⇧ K</kbd>  ' + escapeHtml(t('ft.toggle')) + ' &nbsp; <kbd>ESC</kbd>  ' + escapeHtml(t('ft.close')) + '</span>',
+      ].join('');
+    }
+  }
+  function setLang(lang, manual) {
+    if (lang !== 'zh' && lang !== 'en') return;
+    if (state.lang === lang && !manual) return;
+    state.lang = lang;
+    if (manual) {
+      state.langManual = true;
+      saveSettings({ lang: lang, langManual: true });
+    }
+    applyLangChrome();
+    refreshBody();
+    restoreTabState();
+  }
+  function toggleLang() {
+    setLang(state.lang === 'zh' ? 'en' : 'zh', true);
+  }
+
   const persisted = loadSettings();
   const state = {
+    lang: resolveInitialLang(persisted.lang, persisted.langManual),
+    langManual: Boolean(persisted.langManual),
     activeTab: persisted.activeTab || 'auth',
     auth: { exports: null, ctx: null, currentTargetId: 'auth', loading: false },
     plus: {
-      lastUrl: '', bulkResults: null, loading: false,
+      lastUrl: '', loading: false,
       // 自定义 country/currency 输入框（持久化，方便用户记住最近一次试的组合）
       customCountry: persisted.plusCustomCountry || '',
       customCurrency: persisted.plusCustomCurrency || '',
@@ -1525,7 +1683,8 @@
     '#' + NS + '-modal .hd-meta { display: flex; gap: 14px; align-items: center; font-size: 12px; color: #6b6660; }',
     '#' + NS + '-modal .hd-meta .sep { color: #d4d0c8; }',
     '#' + NS + '-modal .hd-meta b { color: #1a1614; font-weight: 600; }',
-    '#' + NS + '-modal .hd-actions { display: flex; gap: 8px; }',
+    '#' + NS + '-modal .hd-actions { display: flex; gap: 8px; align-items: center; }',
+    '#' + NS + '-modal .hd-actions .btn.sm { height: 36px; padding: 0 12px; font-size: 12px; font-weight: 600; }',
     '#' + NS + '-modal .hd-close { width: 36px; height: 36px; cursor: pointer; background: transparent; color: #6b6660; border: 1px solid #e8e6e0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all .14s ease-out; }',
     '#' + NS + '-modal .hd-close:hover { background: #fef4f1; color: #ff5722; border-color: #ffcfbe; }',
     '#' + NS + '-modal .hd-close .ic { width: 14px; height: 14px; }',
@@ -1610,18 +1769,11 @@
     /* ─── 区域卡片 ─── */
     '#' + NS + '-modal .regions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }',
     '#' + NS + '-modal .region { padding: 18px 16px; cursor: pointer; text-align: left; background: #ffffff; color: #1a1614; border: 1px solid #e8e6e0; border-radius: 10px; transition: all .14s ease-out; font-family: inherit; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; }',
-    '#' + NS + '-modal .region:hover { border-color: #ff5722; background: #fef4f1; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,87,34,.12); }',
+    '#' + NS + '-modal .region:hover:not(:disabled) { border-color: #ff5722; background: #fef4f1; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,87,34,.12); }',
+    '#' + NS + '-modal .region:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }',
     '#' + NS + '-modal .region-code { font-size: 11px; letter-spacing: 0.1em; color: #aaa5a0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-weight: 600; }',
     '#' + NS + '-modal .region-label { font-size: 18px; color: #1a1614; font-family: "Smiley Sans CKNB", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif; font-style: italic; font-weight: 700; letter-spacing: -0.005em; }',
     '#' + NS + '-modal .region-meta { font-size: 11px; color: #6b6660; }',
-
-    /* ─── 批量结果 ─── */
-    '#' + NS + '-modal .bulk { display: grid; gap: 10px; margin-top: 12px; }',
-    '#' + NS + '-modal .bulk-item { padding: 14px 16px; background: #ffffff; border: 1px solid #e8e6e0; border-left: 3px solid #ff5722; border-radius: 8px; }',
-    '#' + NS + '-modal .bulk-item.err { border-left-color: #dc2626; background: #fef2f2; }',
-    '#' + NS + '-modal .bulk-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }',
-    '#' + NS + '-modal .bulk-hd .region-code { color: #6b6660; }',
-    '#' + NS + '-modal .bulk-hd .label-cn { font-size: 14px; font-family: "Smiley Sans CKNB", "PingFang SC", system-ui, sans-serif; font-style: italic; font-weight: 700; color: #1a1614; }',
 
     /* ─── URL ─── */
     '#' + NS + '-modal .url { display: block; padding: 10px 12px; margin-bottom: 8px; background: #fafaf8; color: #6b6660; border: 1px solid #e8e6e0; border-radius: 6px; word-break: break-all; font: 11px/1.55 ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace; text-decoration: none; transition: all .14s ease-out; }',
@@ -1785,10 +1937,10 @@
 
   // RENDER · 中文界面
   function tabSpec(id) {
-    if (id === 'auth') return { num: '01', label: '鉴权 · 导出' };
-    if (id === 'plus') return { num: '02', label: 'Plus 订阅' };
-    if (id === 'team') return { num: '03', label: 'Team 订阅' };
-    if (id === 'imp')  return { num: '04', label: '导入 · 转换' };
+    if (id === 'auth') return { num: '01', label: t('tab.auth') };
+    if (id === 'plus') return { num: '02', label: t('tab.plus') };
+    if (id === 'team') return { num: '03', label: t('tab.team') };
+    if (id === 'imp')  return { num: '04', label: t('tab.imp') };
     return { num: '', label: id };
   }
   function planClass(p) {
@@ -1874,7 +2026,7 @@
     const regions = Object.entries(PLUS_PROFILES).map(function(entry) {
       const k = entry[0], p = entry[1];
       return [
-        '<button class="region" data-plus-region="' + k + '">',
+        '<button class="region" data-plus-region="' + k + '"' + (state.plus.loading ? ' disabled' : '') + '>',
         '  <div class="region-code">' + p.code + ' · ' + p.currency + '</div>',
         '  <div class="region-label">' + escapeHtml(p.label) + '</div>',
         '  <div class="region-meta">' + escapeHtml(p.note || (p.country + ' 区域账单')) + '</div>',
@@ -1882,16 +2034,16 @@
       ].join('');
     }).join('');
     return [
-      // 教程横幅 + 展开详情
+      // 代充封控提示 · 引导购买成品号（v2.5.1）
       '<div class="tutor">',
       '  <div class="tutor-hd">',
-      '    <div class="tutor-icon">' + icon('bolt', 18) + '</div>',
+      '    <div class="tutor-icon">' + icon('key', 18) + '</div>',
       '    <div class="tutor-body">',
-      '      <div class="tutor-title">PayPal 通道 · 不到 3 元拿下 PLUS</div>',
-      '      <div class="tutor-sub">教程汇总 by <b>linux.do · bdigu</b> · 必须挂 <b style="color:#ff5722">日本梯子</b>拿试用 + <b style="color:#ff5722">Visa / Mastercard 美卡</b>走 PayPal</div>',
+      '      <div class="tutor-title">' + escapeHtml(t('notice.title')) + '</div>',
+      '      <div class="tutor-sub">' + t('notice.sub') + '</div>',
       '    </div>',
       '    <button class="btn sm" data-action="plus-tutorial-toggle" aria-expanded="false">',
-      '      <span class="tutor-toggle-text">查看完整步骤</span>',
+      '      <span class="tutor-toggle-text">' + escapeHtml(t('notice.toggleOpen')) + '</span>',
       '    </button>',
       '  </div>',
       '  <div class="tutor-detail" id="' + NS + '-tutor-detail" hidden></div>',
@@ -1920,16 +2072,8 @@
         '</div>',
       ].join('') : '',
 
-      '<div class="lbl">选择支付区域<span class="hint">' + Object.keys(PLUS_PROFILES).length + ' 个预设 · 单选 / 批量 / 自定义</span></div>',
+      '<div class="lbl">选择支付区域<span class="hint">' + Object.keys(PLUS_PROFILES).length + ' 个预设 · 点选单个区域生成（一次只生成一条，后链会使前链失效）</span></div>',
       '<div class="regions">' + regions + '</div>',
-      '<div class="acts">',
-      '  <button class="btn primary" data-action="plus-generate-all" ' + (state.plus.loading ? 'disabled' : '') + '>',
-      (state.plus.loading ? '<span class="spin"></span> 并发生成中…' : (icon('globe', 14) + ' <span>批量生成 ' + Object.keys(PLUS_PROFILES).length + ' 个区域</span>')),
-      '  </button>',
-      '  <button class="btn" data-action="plus-generate-paypal-pool" ' + (state.plus.loading ? 'disabled' : '') + ' title="只批量生成 9 个欧元区国家，专门找 PayPal 入口">',
-      icon('globe', 14) + ' <span>仅批量欧元区 PayPal 池</span>',
-      '  </button>',
-      '</div>',
       // 自定义国家/币种 · 当 OpenAI / Stripe 改了预设国家的 PayPal 映射时，
       // 用户能即时切到任意 ISO-3166 alpha-2 + ISO-4217 三字母币种试错。
       '<div class="lbl" style="margin-top:14px">自定义 country / currency<span class="hint">预设全失效时用这个</span></div>',
@@ -1954,67 +2098,25 @@
     ].join('');
   }
 
-  // PayPal 教程内容（来源：linux.do bdigu 2026-05 帖）
+  // 代充封控 · 购买成品号说明（v2.5.1 替换旧 PayPal 教程）
   function renderTutorialDetail() {
-    const steps = [
-      { n: '01', t: '挂日本代理 / VPN', d: '让 ChatGPT 看到你的出口 IP 是 <b>日本</b>。这是 0 元试用资格的<b>唯一</b>触发条件，与请求体 country 字段无关。可用日本家宽 / 日本梯子。' },
-      { n: '02', t: '生成长链', d: '脚本中选「PayPal · 欧元区」（country=DE, currency=EUR），点击生成 → 复制 OpenAI 长链。<b style="color:#ff5722">试用资格已被你日本代理 IP 触发，country 选欧元区是为了支付页默认显示 PayPal</b>。不要短链直付。' },
-      { n: '03', t: '指纹浏览器 + 美国家宽 IP 打开长链', d: '换到指纹浏览器（AdsPower / 比特等）+ 纯净美国家宽 IP，IP 所在州要和你的 0 刀美卡州一致。' },
-      { n: '04', t: '在 pay.openai.com 选 PayPal', d: '不要直接填卡，<b style="color:#ff5722">大部分 0 刀卡会被直接拒</b>。一定选 PayPal 支付。' },
-      { n: '05', t: '填账单地址', d: '填焚决地址（不必跟卡地址一致，按下方地址表选对应州的）。' },
-      { n: '06', t: '注册新 PayPal 邮箱', d: '<b style="color:#ff5722">不要填你真实的 PayPal 邮箱</b>！瞎填一个全新邮箱，下一步会自动开新 PayPal 账户。' },
-      { n: '07', t: '填 0 刀美卡（Visa / Mastercard）', d: '<b style="color:#ff5722">必须是 Visa 或 Mastercard 美卡</b>，国卡 / Amex / Discover 都不行。卡商参考 2.5 元 / 张，1.5 元的成功率低。' },
-      { n: '08', t: 'PayPal 接码手机号', d: '用 1.5 元 30 天的接码服务，把手机号填进去，会收到 PayPal 验证码。' },
-      { n: '09', t: '人机验证（可跳）', d: '若出现 Cloudflare 验证页转圈圈，按 F12 直接删掉验证窗口 DOM 元素，不影响后续流程。' },
-      { n: '10', t: '提交支付 → 看到购物袋', d: '看到 ChatGPT 购物袋页面 = 成功开通，邮箱秒收开通邮件。整个流程不到 5 分钟。' },
-    ];
-    const addrs = [
-      ['CA', '1586 29th Ave, San Francisco, CA 94122'],
-      ['TX', '2671 Clayton Oaks Dr, Dallas, TX 75227'],
-      ['FL', '7714 Legacy Ln, Orlando, FL 32818'],
-      ['NC', '1621 Elswick Lane, Charlotte, NC 28214'],
-      ['AZ', '2922 E Le Marche Ave, Phoenix, AZ 85032'],
-    ];
-    const debug = [
-      ['黄标提示 / 跳转 PayPal 风控页', 'IP 问题。查 0 刀卡所在州 → 代理平台换该州 IP → 隐私窗口重试（最好换号生成新长链）'],
-      ['完全失败 / 卡被拒', '卡商问题。把卡丢回卡商群让"手法哥"测试，有人成功 = IP 你的问题，没人成功 = 换卡商'],
-      ['验证码收不到', '换接码服务，或者用号商提供的真实美国手机号'],
-    ];
-    const stepHtml = steps.map(function(s) {
-      return [
-        '<div class="tutor-step">',
-        '  <div class="tutor-step-num">' + s.n + '</div>',
-        '  <div class="tutor-step-text">',
-        '    <div class="tutor-step-title">' + escapeHtml(s.t) + '</div>',
-        '    <div class="tutor-step-desc">' + s.d + '</div>',
-        '  </div>',
-        '</div>',
-      ].join('');
-    }).join('');
-    const addrHtml = addrs.map(function(a) {
-      return '<div class="tutor-addr"><span class="tutor-addr-state">' + a[0] + '</span><span>' + escapeHtml(a[1]) + '</span></div>';
-    }).join('');
-    const debugHtml = debug.map(function(d) {
-      return '<div class="tutor-debug"><span class="tutor-debug-tag">' + escapeHtml(d[0]) + '</span><span>' + escapeHtml(d[1]) + '</span></div>';
-    }).join('');
     return [
       '<div class="tutor-warn">',
-      '  <div class="tutor-warn-title">必备物料</div>',
-      '  <ul class="tutor-warn-list">',
-      '    <li><b>0 刀美卡</b>（Visa 或 Mastercard，约 2.5 元 / 张）</li>',
-      '    <li><b>PayPal 接码手机号</b>（约 1.5 元 30 天）</li>',
-      '    <li><b>日本 IP</b>（生成长链时用）+ <b>美国家宽 IP</b>（打开长链时用）</li>',
-      '    <li><b>指纹浏览器</b>（AdsPower / 比特浏览器 / Hidemyacc 等）</li>',
-      '  </ul>',
+      '  <div class="tutor-warn-title">' + escapeHtml(t('notice.detailTitle')) + '</div>',
+      '  <div class="tutor-step-desc" style="margin-top:8px;line-height:1.55">' + t('notice.detailP1') + '</div>',
       '</div>',
-      '<div class="tutor-steps">' + stepHtml + '</div>',
-      '<div class="tutor-section-title">焚决地址（按 0 刀卡所在州选）</div>',
-      '<div class="tutor-addrs">' + addrHtml + '</div>',
-      '<div class="tutor-section-title">支付失败排查</div>',
-      '<div class="tutor-debugs">' + debugHtml + '</div>',
-      '<div class="tutor-footer">教程来源：<a href="https://linux.do" target="_blank" rel="noopener" style="color:#ff5722">linux.do</a> @bdigu @rsharecn · 2026 年 5 月</div>',
+      '<div class="tutor-section-title" style="margin-top:14px">' + escapeHtml(t('notice.detailTitle2')) + '</div>',
+      '<div class="tutor-step-desc" style="line-height:1.55;margin-bottom:10px">' + t('notice.detailP2') + '</div>',
+      '<div class="acts" style="margin:8px 0 12px">',
+      '  <button class="btn primary sm" data-action="copy-wechat">' + icon('copy', 12) + ' <span>' + escapeHtml(t('notice.copyWx')) + '</span></button>',
+      '  <span class="stat" style="margin:0;padding:6px 10px">' + escapeHtml(t('hd.wechat')) + ' <b style="color:#ff5722">' + escapeHtml(CONTACT_WECHAT) + '</b> · 传康KK</span>',
+      '</div>',
+      '<div class="tutor-section-title">' + escapeHtml(t('notice.detailTitle3')) + '</div>',
+      '<div class="tutor-step-desc" style="line-height:1.55">' + t('notice.detailP3') + '</div>',
+      '<div class="tutor-footer">' + escapeHtml(t('notice.footer')) + '</div>',
     ].join('');
   }
+
   function renderTeam() {
     const f = state.team.form;
     return [
@@ -2198,31 +2300,34 @@
       '<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="' + NS + '-title">',
       '  <div class="hd">',
       '    <div class="hd-brand">',
-      '      <div class="hd-mark"><span class="dot"></span><span>CKNB · CHATGPT 全能助手</span></div>',
-      '      <h2 class="hd-title" id="' + NS + '-title"><em>ChatGPT</em> 全能助手 · 工作台</h2>',
+      '      <div class="hd-mark"><span class="dot"></span><span>' + escapeHtml(t('hd.mark')) + '</span></div>',
+      '      <h2 class="hd-title" id="' + NS + '-title">' + t('hd.title') + '</h2>',
       '      <div class="hd-meta">',
       '        <span>V' + escapeHtml(VERSION) + '</span>',
       '        <span>·</span>',
-      '        <span>作者 <b>' + escapeHtml(AUTHOR) + '</b></span>',
+      '        <span>' + escapeHtml(t('hd.author')) + ' <b>' + escapeHtml(AUTHOR) + '</b></span>',
       '        <span>·</span>',
-      '        <span>微信 <b>' + escapeHtml(CONTACT_WECHAT) + '</b></span>',
+      '        <span>' + escapeHtml(t('hd.wechat')) + ' <b>' + escapeHtml(CONTACT_WECHAT) + '</b></span>',
       '      </div>',
       '    </div>',
       '    <div class="hd-actions">',
-      '      <button class="hd-close" data-action="close" aria-label="关闭">' + icon('close', 14) + '</button>',
+      '      <button class="btn sm" data-action="toggle-lang" title="' + escapeHtml(t('hd.langTip')) + '" style="min-width:64px">' + escapeHtml(t('hd.lang')) + '</button>',
+      '      <button class="hd-close" data-action="close" aria-label="' + escapeHtml(t('hd.close')) + '">' + icon('close', 14) + '</button>',
       '    </div>',
       '  </div>',
       '  <div class="tabs" role="tablist">' + tabBtnHTML('auth') + tabBtnHTML('plus') + tabBtnHTML('team') + tabBtnHTML('imp') + '</div>',
       '  <div class="bd" id="' + NS + '-body"></div>',
       '  <div class="ft">',
-      '    <span><b>v' + escapeHtml(VERSION) + ' <span class="sep">·</span> 9 种导出格式 <span class="sep">·</span> 3 个支付区域</span>',
-      '    <span class="kbd-tip"><kbd>⌘ ⇧ K</kbd>  切换 &nbsp; <kbd>ESC</kbd>  关闭</span>',
+      '    <span><b>v' + escapeHtml(VERSION) + ' <span class="sep">·</span> ' + escapeHtml(t('ft.formats')) + ' <span class="sep">·</span> ' + escapeHtml(t('ft.regions')) + '</b></span>',
+      '    <span class="kbd-tip"><kbd>⌘ ⇧ K</kbd>  ' + escapeHtml(t('ft.toggle')) + ' &nbsp; <kbd>ESC</kbd>  ' + escapeHtml(t('ft.close')) + '</span>',
       '  </div>',
       '</div>',
     ].join('');
     modal.innerHTML = html;
     modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
     modal.querySelector('[data-action="close"]').addEventListener('click', function(e) { e.stopPropagation(); closeModal(); });
+    const langBtn = modal.querySelector('[data-action="toggle-lang"]');
+    if (langBtn) langBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleLang(); });
     modal.querySelectorAll('[data-tab]').forEach(function(b) {
       b.addEventListener('click', function(e) { e.stopPropagation(); setTab(b.getAttribute('data-tab')); });
     });
@@ -2245,8 +2350,7 @@
     restoreTabState();
   }
   function restoreTabState() {
-    if (state.activeTab === 'plus' && state.plus.bulkResults) renderPlusBulkResults(state.plus.bulkResults);
-    else if (state.activeTab === 'plus' && state.plus.lastUrl) renderPlusResult(state.plus.lastUrl);
+    if (state.activeTab === 'plus' && state.plus.lastUrl) renderPlusResult(state.plus.lastUrl);
     if (state.activeTab === 'team' && state.team.lastLinks) renderTeamResult(state.team.lastLinks);
     // 导入 Tab 切回时，把已粘贴文本回填到 textarea
     if (state.activeTab === 'imp') {
@@ -2301,8 +2405,6 @@
       case 'auth-copy-access-token': return onAuthCopyAccessToken();
       case 'auth-download': return onAuthDownload();
       case 'auth-download-all': return onAuthDownloadAll();
-      case 'plus-generate-all': return onPlusGenerateAll();
-      case 'plus-generate-paypal-pool': return onPlusGeneratePaypalPool();
       case 'plus-generate-custom': return onPlusGenerateCustom();
       case 'plus-reset-custom': return onPlusResetCustom();
       // Token 来源切换 (v2.3.4)
@@ -2310,6 +2412,7 @@
       case 'plus-token-paste': return onPlusTokenPaste();
       case 'plus-token-clear': return onPlusTokenClear();
       case 'plus-tutorial-toggle': return onPlusTutorialToggle(btn);
+      case 'copy-wechat': return onCopyWechat();
       case 'team-generate': return onTeamGenerate();
       case 'team-reset': return onTeamReset();
       // 导入 · 转换
@@ -2622,10 +2725,22 @@
       });
     });
   }
+  // 生成中禁用区域卡 / 自定义按钮，避免连点产生多条 checkout（旧链会失效）
+  function setPlusBusy(busy) {
+    state.plus.loading = !!busy;
+    try {
+      document.querySelectorAll('#' + NS + '-modal [data-plus-region]').forEach(function(b) {
+        b.disabled = !!busy;
+      });
+      const customBtn = document.querySelector('#' + NS + '-modal [data-action="plus-generate-custom"]');
+      if (customBtn) customBtn.disabled = !!busy;
+    } catch (e) {}
+  }
   async function onPlusGenerate(regionKey) {
     const profile = PLUS_PROFILES[regionKey];
     if (!profile) return;
-    state.plus.bulkResults = null;
+    if (state.plus.loading) return;
+    setPlusBusy(true);
     const resEl = document.getElementById(NS + '-plus-result');
     if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;正在生成 ' + escapeHtml(profile.label) + ' 链接…</div>';
     try {
@@ -2636,12 +2751,15 @@
     } catch (e) {
       if (resEl) resEl.innerHTML = '<div class="stat err">' + escapeHtml(e.message || String(e)) + '</div>';
       toast(e.message || String(e), 'error', 5000);
+    } finally {
+      setPlusBusy(false);
     }
   }
 
   // ─── 自定义 country / currency 生成 ───────────────────────────
   //   绕开预设池，让用户在 OpenAI 临时调整某国 PayPal 入口时即时应对。
   async function onPlusGenerateCustom() {
+    if (state.plus.loading) return;
     const cc = String(state.plus.customCountry || '').trim().toUpperCase();
     const cu = String(state.plus.customCurrency || '').trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(cc)) { toast('Country 需要 2 位字母（如 IT / NL / ES）', 'error'); return; }
@@ -2651,7 +2769,7 @@
       country: cc, currency: cu, code: cc,
       note: '自定义参数',
     };
-    state.plus.bulkResults = null;
+    setPlusBusy(true);
     const resEl = document.getElementById(NS + '-plus-result');
     if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;用 ' + cc + '/' + cu + ' 生成…</div>';
     try {
@@ -2662,6 +2780,8 @@
     } catch (e) {
       if (resEl) resEl.innerHTML = '<div class="stat err">' + escapeHtml(e.message || String(e)) + '</div>';
       toast(e.message || String(e), 'error', 5000);
+    } finally {
+      setPlusBusy(false);
     }
   }
   function onPlusResetCustom() {
@@ -2714,34 +2834,13 @@
     refreshBody();
     toast('已清空自定义 Session', 'success');
   }
-
-  // ─── 仅批量生成欧元区 PayPal 池 ────────────────────────────────
-  //   只跑 currency=EUR 的 9 个欧元区国家，专门用于 PayPal 入口找回。
-  //   实际上复用 onPlusGenerateAll 的逻辑，但过滤 PLUS_PROFILES。
-  async function onPlusGeneratePaypalPool() {
-    if (state.plus.loading) return;
-    state.plus.loading = true;
-    refreshBody();
-    const resEl = document.getElementById(NS + '-plus-result');
-    const eurEntries = Object.entries(PLUS_PROFILES).filter(function(entry) {
-      return entry[1].currency === 'EUR';
-    });
-    if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;并发生成 ' + eurEntries.length + ' 个欧元区国家链接…</div>';
-    const settled = await Promise.allSettled(eurEntries.map(function(entry) {
-      const profile = entry[1];
-      return generatePlusLink(profile).then(function(url) { return { key: entry[0], profile: profile, url: url }; });
-    }));
-    const items = settled.map(function(r, i) {
-      const profile = eurEntries[i][1];
-      if (r.status === 'fulfilled') return { profile: profile, url: r.value.url, ok: true };
-      return { profile: profile, error: (r.reason && r.reason.message) || String(r.reason), ok: false };
-    });
-    state.plus.bulkResults = items;
-    state.plus.loading = false;
-    refreshBody();
-    renderPlusBulkResults(items);
-    const okN = items.filter(function(x) { return x.ok; }).length;
-    toast('欧元区池 · ' + okN + '/' + items.length + ' 成功', okN > 0 ? 'success' : 'error');
+  async function onCopyWechat() {
+    try {
+      await copyText(CONTACT_WECHAT);
+      toast(t('notice.copiedWx'), 'success');
+    } catch (e) {
+      toast(e.message || String(e), 'error');
+    }
   }
   function onPlusTutorialToggle(btn) {
     const detail = document.getElementById(NS + '-tutor-detail');
@@ -2751,100 +2850,15 @@
       detail.setAttribute('hidden', '');
       detail.innerHTML = '';
       btn.setAttribute('aria-expanded', 'false');
-      const t = btn.querySelector('.tutor-toggle-text');
-      if (t) t.textContent = '查看完整步骤';
+      const el = btn.querySelector('.tutor-toggle-text');
+      if (el) el.textContent = t('notice.toggleOpen');
     } else {
       detail.innerHTML = renderTutorialDetail();
       detail.removeAttribute('hidden');
       btn.setAttribute('aria-expanded', 'true');
-      const t = btn.querySelector('.tutor-toggle-text');
-      if (t) t.textContent = '收起教程';
+      const el = btn.querySelector('.tutor-toggle-text');
+      if (el) el.textContent = t('notice.toggleClose');
     }
-  }
-
-  async function onPlusGenerateAll() {
-    if (state.plus.loading) return;
-    state.plus.loading = true;
-    refreshBody();
-    const resEl = document.getElementById(NS + '-plus-result');
-    if (resEl) resEl.innerHTML = '<div class="stat"><span class="spin" style="color:#ff5722"></span> &nbsp;并发生成 ' + Object.keys(PLUS_PROFILES).length + ' 个区域…</div>';
-    const entries = Object.entries(PLUS_PROFILES);
-    const settled = await Promise.allSettled(entries.map(function(e) {
-      const k = e[0], p = e[1];
-      return generatePlusLink(p).then(function(url) { return { key: k, profile: p, url: url }; });
-    }));
-    state.plus.loading = false;
-    refreshBody();
-    const items = settled.map(function(r, i) {
-      const k = entries[i][0], p = entries[i][1];
-      if (r.status === 'fulfilled') return { ok: true, key: k, profile: p, url: r.value.url };
-      return { ok: false, key: k, profile: p, error: (r.reason && r.reason.message) || String(r.reason) };
-    });
-    state.plus.bulkResults = items;
-    const okCount = items.filter(function(i) { return i.ok; }).length;
-    renderPlusBulkResults(items);
-    toast('批量完成：成功 ' + okCount + ' / ' + items.length, okCount === items.length ? 'success' : 'info');
-  }
-  // v2.3.4：item.url 现在是 {external, internal} 对象。
-  //   bulk 视图主推外部 Stripe 长链（用户主要场景）；
-  //   每条结果带「复制外部」「复制内部」两个 chip 按钮，默认主操作走外部。
-  function renderPlusBulkResults(items) {
-    const el = document.getElementById(NS + '-plus-result');
-    if (!el) return;
-    // 把所有 ok item 的链接拍成 [{idx, kind, url}]，用属性 dataset 引用具体链接
-    const html = items.map(function(it, idx) {
-      if (it.ok) {
-        const ext = (it.url && it.url.external) || '';
-        const intl = (it.url && it.url.internal) || '';
-        const mainUrl = ext || intl;  // 兜底：外部缺时用内部
-        const safe = escapeHtml(mainUrl);
-        return [
-          '<div class="bulk-item">',
-          '  <div class="bulk-hd">',
-          '    <span class="region-code">' + it.profile.code + '</span>',
-          '    <span class="region-label" style="font-size:14px">' + escapeHtml(it.profile.label) + '</span>',
-          '  </div>',
-          ext ? '  <div class="hint" style="margin:4px 0 2px;color:#16a34a;font-size:11px">① 外部 Stripe 长链</div>' : '',
-          ext ? ('  <a class="url" href="' + escapeHtml(ext) + '" target="_blank" rel="noopener">' + escapeHtml(ext) + '</a>') : '',
-          intl ? '  <div class="hint" style="margin:6px 0 2px;color:#6b6660;font-size:11px">② 内部 ChatGPT 短链</div>' : '',
-          intl ? ('  <a class="url" href="' + escapeHtml(intl) + '" target="_blank" rel="noopener">' + escapeHtml(intl) + '</a>') : '',
-          '  <div class="acts" style="margin-bottom:0">',
-          ext ? '    <button class="btn primary sm" data-bulk-action="copy-ext" data-bulk-idx="' + idx + '">' + icon('copy', 12) + ' <span>复制外部</span></button>' : '',
-          ext ? '    <button class="btn sm" data-bulk-action="open-ext" data-bulk-idx="' + idx + '">' + icon('extOpen', 12) + ' <span>打开外部</span></button>' : '',
-          intl ? '    <button class="btn ghost sm" data-bulk-action="copy-intl" data-bulk-idx="' + idx + '">' + icon('copy', 12) + ' <span>复制内部</span></button>' : '',
-          '  </div>',
-          '</div>',
-        ].filter(Boolean).join('');
-      }
-      return [
-        '<div class="bulk-item err">',
-        '  <div class="bulk-hd">',
-        '    <span class="region-code">' + it.profile.code + '</span>',
-        '    <span class="region-label" style="font-size:14px">' + escapeHtml(it.profile.label) + '</span>',
-        '  </div>',
-        '  <div class="stat err">' + escapeHtml(it.error) + '</div>',
-        '</div>',
-      ].join('');
-    }).join('');
-    const okCount = items.filter(function(i) { return i.ok; }).length;
-    el.innerHTML = '<div class="lbl" style="margin-top:8px">批量结果 · ' + okCount + '/' + items.length + '  成功</div><div class="bulk">' + html + '</div>';
-    el.querySelectorAll('[data-bulk-action]').forEach(function(b) {
-      b.addEventListener('click', async function(e) {
-        e.stopPropagation();
-        const idx = Number(b.getAttribute('data-bulk-idx'));
-        const item = items[idx];
-        if (!item || !item.ok) return;
-        const act = b.getAttribute('data-bulk-action');
-        const u = (act && act.endsWith('-intl')) ? (item.url && item.url.internal) : (item.url && item.url.external);
-        if (!u) return;
-        if (act === 'copy-ext' || act === 'copy-intl') {
-          try { await copyText(u); toast('已复制 ' + (act === 'copy-ext' ? '外部长链' : '内部短链'), 'success'); }
-          catch (err) { toast(err.message || String(err), 'error'); }
-        } else if (act === 'open-ext') {
-          window.open(u, '_blank', 'noopener,noreferrer');
-        }
-      });
-    });
   }
   function onTeamReset() {
     state.team.form = { workspace: 'CKNB 团队工作区', seats: '2', promo: '', country: 'US', currency: 'USD', interval: 'month' };
@@ -2918,8 +2932,8 @@
     const fab = document.createElement('button');
     fab.id = NS + '-fab';
     fab.type = 'button';
-    fab.title = 'CKNB ChatGPT 全能助手 · ' + AUTHOR + ' · 拖动可移位';
-    fab.innerHTML = '<i class="ic">' + SVG.sigil + '</i><span>工具箱</span>';
+    fab.title = t('fab.title');
+    fab.innerHTML = '<i class="ic">' + SVG.sigil + '</i><span>' + escapeHtml(t('fab.label')) + '</span>';
     if (Number.isFinite(state.fab.x) && Number.isFinite(state.fab.y)) {
       fab.style.left = state.fab.x + 'px';
       fab.style.top = state.fab.y + 'px';
