@@ -10,15 +10,15 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.5.2';
+  const VERSION = '2.5.3';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
   const SETTINGS_KEY = 'cknb-specimen.settings.v2';
 
   const EXPORT_TARGETS = [
-    { id: 'auth',          label: 'auth.json',     filename: 'auth.json',          desc: 'Codex CLI 原生' },
-    { id: 'cockpit',       label: 'Cockpit',       filename: 'cockpit.json',       desc: 'Cockpit Tools 完整 tokens 嵌套格式' },
+    { id: 'auth',          label: 'auth.json',     filename: 'auth.json',          desc: 'Codex CLI ~/.codex/auth.json（上游对齐）' },
+    { id: 'cockpit',       label: 'Cockpit',       filename: 'cockpit.json',       desc: 'Cockpit Tools 扁平 type=codex（上游对齐）' },
     { id: 'codex',         label: 'Codex Auth',    filename: 'codex-auth.json',    desc: '重组 id_token 含 email/profile' },
     { id: 'cpa',           label: 'CPA',           filename: 'cpa.json',           desc: 'CLI Proxy API 中转格式' },
     { id: 'sub2api',       label: 'Sub2API',       filename: 'sub2api.json',       desc: 'CPA2sub2API 项目格式' },
@@ -45,7 +45,7 @@
     { id: 'codex',         label: 'Codex Auth',    desc: '旧版重组 id_token 格式' },
     { id: 'cpa',           label: 'CPA',           desc: 'type=codex 平铺 + 你的 Python 脚本输出' },
     { id: 'sub2api',       label: 'Sub2API',       desc: 'accounts[].credentials 嵌套（iCloud 备份）' },
-    { id: 'cockpit',       label: 'Cockpit',       desc: 'Cockpit Tools tokens 嵌套' },
+    { id: 'cockpit',       label: 'Cockpit',       desc: 'Cockpit Tools 扁平 type=codex / 嵌套均可识别' },
     { id: '9router',       label: '9router',       desc: 'camelCase + providerSpecificData' },
     { id: 'axonhub',       label: 'AxonHub',       desc: 'AxonHub Codex auth.json' },
     { id: 'codex-manager', label: 'Codex-Manager', desc: 'tokens + meta 双块' },
@@ -815,11 +815,14 @@
       session.workspaceId, session.workspace_id,
       accessPayload && accessPayload.workspace_id, idPayload && idPayload.workspace_id
     );
+    // Web session 几乎没有 OAuth refresh_token；不要把 sessionToken（JWE 会话密文）当成 refresh
     const refreshToken = firstStr(session.refreshToken, session.refresh_token);
+    const authProvider = firstStr(session.authProvider, session.auth_provider);
 
     let synthetic;
     if (!idTokenInput && accountId) {
       const ns = epochSecs(now);
+      // 合成 id_token 的 exp 优先用 access JWT exp，与上游 buildSyntheticCodexIdToken 一致
       const ex = epochSecs(expiresAt) || ns + 90 * 86400;
       const info = { chatgpt_account_id: accountId };
       if (planType) info.chatgpt_plan_type = planType;
@@ -833,7 +836,7 @@
     return {
       accessToken, sessionToken: sessionToken || undefined,
       accountId, chatgptAccountId, workspaceId,
-      email, userId, planType,
+      email, userId, planType, authProvider,
       expiresAt, accessTokenExpiresAt, exportedAt, now,
       refreshToken, idTokenInput,
       codexIdToken, codexSynthetic: Boolean(synthetic),
@@ -841,14 +844,23 @@
     };
   }
 
+  // auth.json · 对齐上游 gtxx3600 Codex 原生格式（2026 主分支）
+  //   · id_token = 真实 id_token 或 CPA 同款合成 JWT（不再误用 accessToken）
+  //   · refresh_token = OAuth refresh（Web session 通常无此字段 → 空串，勿塞 sessionToken）
+  //   · 不再强制要求 sessionToken（OpenAI 2025 Q1 后部分账号已不回 sessionToken）
   function buildAuth(session, ctx) {
-    if (!ctx.sessionToken) throw new Error('auth.json 缺少 sessionToken。');
-    if (!ctx.accountId) throw new Error('auth.json 缺少 account.id。');
-    const iat = Number(getPath(session, 'user.iat'));
-    const last = Number.isFinite(iat) && iat > 0 ? new Date(iat * 1000).toISOString() : new Date(ctx.now.getTime() - 60000).toISOString();
+    if (!ctx.accountId) throw new Error('auth.json 缺少 account.id / chatgpt_account_id。');
+    if (!ctx.accessToken) throw new Error('auth.json 缺少 accessToken。');
     return {
-      OPENAI_API_KEY: null, auth_mode: 'chatgpt', last_refresh: last,
-      tokens: { access_token: ctx.accessToken, account_id: ctx.accountId, id_token: ctx.accessToken, refresh_token: ctx.sessionToken },
+      auth_mode: 'chatgpt',
+      OPENAI_API_KEY: null,
+      tokens: {
+        id_token: ctx.codexIdToken || ctx.accessToken,
+        access_token: ctx.accessToken,
+        refresh_token: ctx.refreshToken || '',
+        account_id: ctx.accountId,
+      },
+      last_refresh: ctx.exportedAt,
     };
   }
   function buildCodex(session, ctx) {
@@ -876,54 +888,56 @@
       session_token: ctx.sessionToken, last_refresh: ctx.exportedAt, expired: ctx.expiresAt,
     }).filter(([_, v]) => v !== undefined && v !== null));
   }
+  // Cockpit · 对齐上游扁平 Codex 导入格式（type=codex 平铺）
+  //   同时保留 import 侧对「tokens 嵌套」旧产物的兼容解析（见 ctxFromCockpit）
   function buildCockpit(ctx) {
-    // Cockpit 实际接受的导入格式（用户提供 2026-05 最新版）：
-    //   完整 tokens 嵌套结构 + id/email/created_at/last_used 元信息
-    //   旧版扁平 token 字段（如 v2.0 写的那种）已不被识别
-    const nowSec = Math.floor(ctx.now.getTime() / 1000);
-    const idSuffix = ctx.accountId
-      || (ctx.email ? toEmailKey(ctx.email) : null)
-      || String(nowSec);
-    return {
-      id: 'codex_' + idSuffix,
-      email: ctx.email || '',
-      tokens: {
-        id_token: ctx.codexIdToken || '',
-        access_token: ctx.accessToken,
-        refresh_token: ctx.refreshToken || '',
-      },
+    return Object.fromEntries(Object.entries({
+      type: 'codex',
+      id_token: ctx.codexIdToken,
+      access_token: ctx.accessToken,
+      refresh_token: ctx.refreshToken || '',
       account_id: ctx.accountId,
       last_refresh: ctx.exportedAt,
+      email: ctx.email,
       expired: ctx.expiresAt,
-      created_at: nowSec,
-      last_used: nowSec,
-    };
+    }).filter(function(e) { return e[1] !== undefined && e[1] !== null; }));
   }
+  // Sub2API · 对齐上游：仅当没有 OAuth refresh_token 时写 expires_at / auto_pause
+  //   （有 refresh 的账号由中转侧自行刷新，不应按 access exp 自动暂停）
   function buildSub2api(ctx) {
+    const hasRefresh = Boolean(ctx.refreshToken);
+    const accessExpUnix = hasRefresh ? undefined : ctx.accessTokenExpiresAt;
+    const expIso = hasRefresh ? undefined : ctx.expiresAt;
+    const expIn = hasRefresh ? undefined : expiresIn(ctx.expiresAt, ctx.now);
     const acc = strip({
       name: ctx.displayName, platform: 'openai', type: 'oauth',
-      expires_at: ctx.accessTokenExpiresAt,
-      auto_pause_on_expired: true,
+      expires_at: accessExpUnix,
+      auto_pause_on_expired: accessExpUnix ? true : undefined,
       concurrency: 10, priority: 1,
       credentials: {
         access_token: ctx.accessToken,
         chatgpt_account_id: ctx.accountId,
         chatgpt_user_id: ctx.userId,
         email: ctx.email,
-        expires_at: ctx.expiresAt,
-        expires_in: expiresIn(ctx.expiresAt, ctx.now),
+        expires_at: expIso,
+        expires_in: expIn,
         plan_type: ctx.planType,
       },
       extra: {
         email: ctx.email, email_key: toEmailKey(ctx.email),
-        name: ctx.displayName, source: 'chatgpt_web_session', last_refresh: ctx.exportedAt,
+        name: ctx.displayName,
+        auth_provider: ctx.authProvider,
+        source: 'chatgpt_web_session',
+        last_refresh: ctx.exportedAt,
       },
     });
     return { exported_at: ctx.exportedAt, proxies: [], accounts: acc ? [acc] : [] };
   }
   function build9router(ctx) {
+    // 对齐上游 stripUnavailable：无 refresh 时不写 refreshToken 字段
     return strip({
-      accessToken: ctx.accessToken, refreshToken: ctx.refreshToken,
+      accessToken: ctx.accessToken,
+      refreshToken: ctx.refreshToken || undefined,
       expiresAt: ctx.expiresAt, testStatus: 'active',
       expiresIn: expiresIn(ctx.expiresAt, ctx.now),
       providerSpecificData: { chatgptAccountId: ctx.accountId, chatgptPlanType: ctx.planType },
@@ -1083,22 +1097,30 @@
     if (isObj(input.tokens) && isObj(input.meta)) {
       return 'codex-manager';
     }
-    // 7) Cockpit · tokens 嵌套 + 平铺 account_id/email/expired (无 meta)
+    // 7) Cockpit 嵌套态 · tokens + 平铺 account_id/email/expired（无 meta）
     if (isObj(input.tokens) && typeof input.tokens.access_token === 'string' &&
         (input.account_id !== undefined || input.expired !== undefined ||
-         input.last_used !== undefined || input.created_at !== undefined)) {
+         input.last_used !== undefined || input.created_at !== undefined) &&
+        input.auth_mode !== 'chatgpt') {
       return 'cockpit';
     }
-    // 8) CPA / Python 脚本输出 · type=codex 平铺，无 tokens 嵌套
+    // 8) Cockpit 扁平态 · type=codex 平铺且无 CPA 专属字段（chatgpt_plan_type / session_token）
+    //    与 CPA 极近：有 account_note 或（无 plan_type 且无 chatgpt_account_id 双写）时优先 cockpit
+    if (input.type === 'codex' && typeof input.access_token === 'string' && !isObj(input.tokens) &&
+        (input.account_note !== undefined ||
+         (input.chatgpt_account_id === undefined && input.plan_type === undefined && input.chatgpt_plan_type === undefined))) {
+      return 'cockpit';
+    }
+    // 9) CPA / Python 脚本输出 · type=codex 平铺，无 tokens 嵌套
     if (input.type === 'codex' && typeof input.access_token === 'string' &&
         !isObj(input.tokens)) {
       return 'cpa';
     }
-    // 9) Codex Auth 旧版 · 只有 tokens.{id_token, access_token}，最弱兜底
+    // 10) Codex Auth 旧版 · 只有 tokens.{id_token, access_token}，最弱兜底
     if (isObj(input.tokens) && typeof input.tokens.access_token === 'string') {
       return 'codex';
     }
-    // 10) 万能兜底：见到 access_token 字符串就当作裸 token
+    // 11) 万能兜底：见到 access_token 字符串就当作裸 token
     if (typeof input.access_token === 'string') return 'plain';
     if (typeof input.accessToken === 'string') return 'plain';
     return null;
@@ -1240,21 +1262,23 @@
   }
 
   function ctxFromCockpit(o) {
+    // 兼容两种产物：① 上游扁平 type=codex ② 历史 tokens 嵌套
     const t = isObj(o.tokens) ? o.tokens : {};
-    const access = String(t.access_token || '').trim();
-    if (!access) throw new Error('Cockpit 缺少 tokens.access_token');
+    const access = String(t.access_token || o.access_token || '').trim();
+    if (!access) throw new Error('Cockpit 缺少 access_token');
     const harvested = harvestFromJwt(access);
+    const refresh = firstStr(t.refresh_token, o.refresh_token);
     return finalizeCtx({
       accessToken: access,
-      sessionToken: firstStr(t.refresh_token),
-      refreshToken: firstStr(t.refresh_token),
+      sessionToken: refresh,
+      refreshToken: refresh,
       accountId: firstStr(o.account_id, harvested.accountId),
       chatgptAccountId: firstStr(o.account_id, harvested.accountId),
       email: firstStr(o.email, harvested.email),
       userId: harvested.userId,
       planType: harvested.planType,
       expiresAt: firstStr(normalizeTs(o.expired), harvested.expiresAtIso),
-      idTokenInput: firstStr(t.id_token),
+      idTokenInput: firstStr(t.id_token, o.id_token),
     });
   }
 

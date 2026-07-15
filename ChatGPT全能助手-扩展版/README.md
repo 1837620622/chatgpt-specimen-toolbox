@@ -1,6 +1,6 @@
 # ChatGPT 全能助手 · Specimen（浏览器扩展版）
 
-**版本 2.5.2**（与 `manifest.json` / `content.js` 的 `VERSION` 一致）。
+**版本 2.5.3**（与 `manifest.json` / `content.js` 的 `VERSION` 一致）。
 
 把同名油猴脚本 `ChatGPT全能助手.user.js`（注意后缀是 `.user.js`，不是 `.js`）1:1 移植为 Manifest V3 浏览器扩展。
 Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
@@ -68,7 +68,7 @@ ChatGPT全能助手-扩展版/
 - `GM_registerMenuCommand` → 由 background.js 用 `chrome.contextMenus` + `chrome.action.onClicked` 等价实现。
 - `GM_xmlhttpRequest`（长链第 2 步跨域）→ 由 background service worker 持主机权限代发，绕过 content script 的 CORS 限制。
 
-## 与主 README 一致的使用约束（v2.5.2）
+## 与主 README 一致的使用约束（v2.5.3）
 
 | 约束 | 说明 |
 |:--|:--|
