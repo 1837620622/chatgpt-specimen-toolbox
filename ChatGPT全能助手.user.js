@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.5.4
-// @description  v2.5.3：9 出 × 11 入 · 路由检测对照 gtxx3600 上游核对（auth.json / Cockpit 扁平 / Sub2API expires 规则）。ChatGPT Session 一键导出 9 种主流格式 + 路由检测悬浮（请求模型→实际模型·PoW·可导出） + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.3：导出格式对齐上游 schema；语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
+// @version      2.5.5
+// @description  v2.5.5：9 出 × 11 入 · 路由检测对照 gtxx3600 上游核对（auth.json / Cockpit 扁平 / Sub2API expires 规则）。ChatGPT Session 一键导出 9 种主流格式 + 路由检测悬浮（请求模型→实际模型·PoW·可导出） + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.5：导出格式对齐上游 schema；语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -29,13 +29,13 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.5.4';
+  const VERSION = '2.5.5';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
   const SETTINGS_KEY = 'cknb-specimen.settings.v2';
 // ──────────────────────────────────────────────────────────
-  //  ROUTE INSPECTOR · 路由检测（v2.5.0 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
+  //  ROUTE INSPECTOR · 路由检测（v2.5.5 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
   // ──────────────────────────────────────────────────────────
   const ROUTE_NS = NS + '-route';
   const ROUTE_HISTORY_KEY = 'cknb-route:history:v1';
@@ -2767,7 +2767,7 @@
     '#' + NS + '-route-pill .pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '#' + NS + '-route-host {',
     '  position: fixed; left: 16px; bottom: 56px; z-index: 2147483645;',
-    '  width: 300px; max-height: min(62vh, 520px);',
+    '  width: min(300px, calc(100vw - 32px)); max-height: min(62vh, 520px);',
     '  background: #ffffff; color: #1a1614;',
     '  border: 1px solid #e8e6e0; border-radius: 12px;',
     '  box-shadow: 0 16px 40px rgba(20,16,12,.14), 0 4px 10px rgba(20,16,12,.06);',
@@ -3014,7 +3014,7 @@
     ].join('');
   }
 
-  // 代充封控 · 购买成品号说明（v2.5.1 替换旧 PayPal 教程）
+  // 代充封控 · 购买成品号说明（v2.5.5 替换旧 PayPal 教程）
   function renderTutorialDetail() {
     return [
       '<div class="tutor-warn">',
@@ -3306,6 +3306,29 @@ function renderRouteTab() {
     routeRenderFloating();
     refreshBody();
   }
+  // ── 定位：悬浮面板锚定在 pill 正上方（避免遮挡对话区）──
+// ── 定位：悬浮面板锚定在 pill 正上方（避免遮挡对话区）──
+  function positionRouteHostAbovePill() {
+    const pill = document.getElementById(ROUTE_NS + '-pill');
+    const host = document.getElementById(ROUTE_NS + '-host');
+    if (!pill || !host || host.getAttribute('data-open') !== 'true') return;
+    const pillRect = pill.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const gap = 8;
+    // 居中于 pill 上方，优先上方，顶部不足则改下方
+    let left = pillRect.left + (pillRect.width - hostRect.width) / 2;
+    let top = pillRect.top - hostRect.height - gap;
+    if (top < 8) top = pillRect.bottom + gap;
+    left = Math.max(8, Math.min(window.innerWidth - hostRect.width - 8, left));
+    top = Math.max(8, Math.min(window.innerHeight - hostRect.height - 8, top));
+    host.style.left = left + 'px';
+    host.style.top = top + 'px';
+    host.style.right = 'auto';
+    host.style.bottom = 'auto';
+  }
+  // 窗口尺寸变化时，若面板展开则重新锚定
+  window.addEventListener('resize', () => { if (document.getElementById(ROUTE_NS + '-host')?.getAttribute('data-open') === 'true') positionRouteHostAbovePill(); });
+
   // ── Floating UI ──
   let routeFloatingReady = false;
   let routeDrag = null;
@@ -3321,7 +3344,7 @@ function renderRouteTab() {
       pill.innerHTML = '<span class="dot"></span><span class="pill-text">路由检测</span>';
       pill.addEventListener('click', () => {
         const host = document.getElementById(ROUTE_NS + '-host');
-        if (host) { const isOpen = host.getAttribute('data-open') === 'true'; host.setAttribute('data-open', isOpen ? 'false' : 'true'); saveSettings({ routeFloatingOpen: !isOpen }); }
+        if (host) { const isOpen = host.getAttribute('data-open') === 'true'; const next = !isOpen; host.setAttribute('data-open', next ? 'true' : 'false'); saveSettings({ routeFloatingOpen: next }); if (next) setTimeout(positionRouteHostAbovePill, 0); }
       });
       document.body.appendChild(pill);
       // pill draggable
@@ -3338,6 +3361,8 @@ function renderRouteTab() {
           const x = Math.max(8, Math.min(window.innerWidth - pill.offsetWidth - 8, dragPill.originLeft + dx));
           const y = Math.max(8, Math.min(window.innerHeight - pill.offsetHeight - 8, dragPill.originTop + dy));
           pill.style.left = x + 'px'; pill.style.top = y + 'px'; pill.style.right = 'auto'; pill.style.bottom = 'auto';
+           const hostPill = document.getElementById(ROUTE_NS + '-host');
+           if (hostPill && hostPill.getAttribute('data-open') === 'true') positionRouteHostAbovePill();
         };
         const onUp = () => {
           document.removeEventListener('mousemove', onMove);
@@ -3418,7 +3443,8 @@ function renderRouteTab() {
       const hx = persisted.routeHostX, hy = persisted.routeHostY;
       if (Number.isFinite(hx) && Number.isFinite(hy)) { host.style.left = hx + 'px'; host.style.top = hy + 'px'; host.style.right = 'auto'; host.style.bottom = 'auto'; }
       const openSaved = persisted.routeFloatingOpen;
-      if (openSaved === true) host.setAttribute('data-open','true');
+      // 默认保持收起：仅当显式为 true 才展开，且展开时锚定到 pill 上方
+      if (openSaved === true) { host.setAttribute('data-open','true'); setTimeout(positionRouteHostAbovePill, 0); }
     }
     routeFloatingReady = true;
     routeRenderFloating();
@@ -3432,6 +3458,8 @@ function renderRouteTab() {
       return;
     }
     ensureRouteFloating();
+    // 若面板展开，始终锚定到 pill 上方（避免固定左侧遮挡）
+    if (document.getElementById(ROUTE_NS + '-host')?.getAttribute('data-open') === 'true') setTimeout(positionRouteHostAbovePill, 0);
     const host = document.getElementById(ROUTE_NS + '-host');
     const pill = document.getElementById(ROUTE_NS + '-pill');
     const rbd = document.getElementById(ROUTE_NS + '-rbd');

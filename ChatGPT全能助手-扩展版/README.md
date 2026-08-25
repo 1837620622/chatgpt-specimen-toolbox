@@ -1,6 +1,6 @@
 # ChatGPT 全能助手 · Specimen（浏览器扩展版）
 
-**版本 2.5.4**（与 `manifest.json` / `content.js` 的 `VERSION` 一致）。
+**版本 2.5.5**（与 `manifest.json` / `content.js` 的 `VERSION` 一致）。
 
 把同名油猴脚本 `ChatGPT全能助手.user.js`（注意后缀是 `.user.js`，不是 `.js`）1:1 移植为 Manifest V3 浏览器扩展。
 Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
@@ -15,10 +15,10 @@ Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
 - **v2.4.x 长链引擎**：Stripe `payment_pages/{cs}/init` + host 重写为 `pay.openai.com`；跨域由 background service worker 代发；失败时可经 `codex-bypass.chuankangkk.top` 代理兜底。
 - **Plus 订阅链接**：15 个区域预设（欧元区 PayPal 池、日区直绑、印尼 GoPay、印度 UPI、巴西 PIX、英区、美区兜底）+ 自定义 country/currency；**仅单条生成**——点选一个区域或自定义参数；**后生成的链接会使先前链接失效**。已移除「批量生成全部区域」「仅批量欧元区 PayPal 池」。
 - **Team 工作区订阅链接**：自定义工作区名、座位数、促销码、国家/币种/周期；字段实时持久化。
-- **v2.5.1**：
+- **v2.5.5**：
   - Plus 横幅改为「代充已封控 · 请购买成品号」（微信 **传康KK / 1837620622**，加好友请备注「购买成品号」· **无无偿服务**）；旧版「不到 3 元拿下 PLUS」教程已删除，不再维护。
   - 外壳 chrome + Plus 横幅/详情中英双语：按系统时区自动切换，面板右上角可手动覆盖并记住偏好。
-- **v2.5.4 路由检测**：融合 `Liu-Bot24/chatgpt-route-inspector` 三层嗅探（SSE / WebSocket / 会话重载），开关控制，左下角可拖拽小悬浮窗实时显示 `请求模型 → 实际路由模型`，含 PoW 难度与抓包历史，支持复制诊断/导出 JSON/Markdown/清空。
+- **v2.5.5 路由检测**：融合 `Liu-Bot24/chatgpt-route-inspector` 三层嗅探（SSE / WebSocket / 会话重载），开关控制，左下角可拖拽小悬浮窗实时显示 `请求模型 → 实际路由模型`，含 PoW 难度与抓包历史，支持复制诊断/导出 JSON/Markdown/清空。
 - 浮窗位置可拖拽并持久化到 `localStorage`。
 
 ## 触发入口（功能等价于油猴菜单）
@@ -33,7 +33,7 @@ Chrome、Microsoft Edge、Mozilla Firefox 共用同一份目录与代码。
 
 ```
 ChatGPT全能助手-扩展版/
-├── manifest.json        MV3 清单，三家浏览器共用（version 2.5.4）
+├── manifest.json        MV3 清单，三家浏览器共用（version 2.5.5）
 ├── content.js           主脚本（由 .user.js 截取 IIFE 主体 + 追加扩展消息桥）
 ├── background.js        Service Worker：图标点击 / 右键菜单 / Stripe init 代发
 ├── page-hook.js         主世界注入：fetch/WebSocket 嗅探，经 postMessage 回传
@@ -62,7 +62,7 @@ ChatGPT全能助手-扩展版/
 1. 头部去掉 `// ==UserScript== ... // ==/UserScript==` 元数据块（扩展不使用）。
 2. IIFE 内部 `init()` 之前追加 `chrome.runtime.onMessage` 监听，用于接收 background.js 转发的 `CKNB_OPEN_MODAL` 消息。
 3. **v2.4.x 长链引擎跨域桥**：油猴版第 2 步（Stripe `payment_pages/{cs}/init`）用 `GM_xmlhttpRequest` 直接跨域发；扩展版 content script 受所在页面 CORS 约束，改为通过 `CKNB_STRIPE_INIT` 消息把 url / headers / body 转交 background service worker 代发（manifest `host_permissions` 含 `https://api.stripe.com/*` 与代理域 `https://codex-bypass.chuankangkk.top/*`），再把响应回传。`rules.json` 在网络层剥离发往 Stripe 的 `Origin` 头。
-4. **v2.5.4 路由检测注入**：`manifest.json` 以 `document_start` + `web_accessible_resources: ["page-hook.js"]` 将 `page-hook.js` 注入主世界嗅探 `fetch/WebSocket`，经 `postMessage({source:'cknb-route-inspector'})` 回传；开关与历史经 `storage` + `localStorage` 持久化。
+4. **v2.5.5 路由检测注入**：`manifest.json` 以 `document_start` + `web_accessible_resources: ["page-hook.js"]` 将 `page-hook.js` 注入主世界嗅探 `fetch/WebSocket`，经 `postMessage({source:'cknb-route-inspector'})` 回传；开关与历史经 `storage` + `localStorage` 持久化。
 5. 调试日志文案可略有不同；**取链兜底策略应对齐**（Stripe init 无 hosted URL 时用 `client_secret` 拼片段；整段 init 失败再回退 `buildBothCheckoutUrls`）。
 
 油猴 API 在扩展环境下自动降级：
@@ -71,7 +71,7 @@ ChatGPT全能助手-扩展版/
 - `GM_registerMenuCommand` → 由 background.js 用 `chrome.contextMenus` + `chrome.action.onClicked` 等价实现。
 - `GM_xmlhttpRequest`（长链第 2 步跨域）→ 由 background service worker 持主机权限代发，绕过 content script 的 CORS 限制。
 
-## 与主 README 一致的使用约束（v2.5.4）
+## 与主 README 一致的使用约束（v2.5.5）
 
 | 约束 | 说明 |
 |:--|:--|

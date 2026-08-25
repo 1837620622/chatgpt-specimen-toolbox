@@ -1,4 +1,4 @@
-// ChatGPT 路由检测 · Page Hook (v2.5.4)
+// ChatGPT 路由检测 · Page Hook (v2.5.5)
 // 在页面主世界运行，直接钩 fetch/WebSocket 并通过 postMessage 把观测回传给 content script
 (() => {
   if (window.__CKNB_ROUTE_HOOK__) return;
