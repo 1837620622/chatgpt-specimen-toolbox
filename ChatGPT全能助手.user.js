@@ -1,17 +1,18 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.5.3
-// @description  v2.5.3：9 种导出格式对照 gtxx3600 上游核对（auth.json / Cockpit 扁平 / Sub2API expires 规则）。ChatGPT Session 一键导出 9 种主流格式 + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.3：导出格式对齐上游 schema；语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
+// @version      2.5.4
+// @description  v2.5.3：9 出 × 11 入 · 路由检测对照 gtxx3600 上游核对（auth.json / Cockpit 扁平 / Sub2API expires 规则）。ChatGPT Session 一键导出 9 种主流格式 + 路由检测悬浮（请求模型→实际模型·PoW·可导出） + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.3：导出格式对齐上游 schema；语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @connect      api.stripe.com
 // @connect      codex-bypass.chuankangkk.top
-// @run-at       document-idle
+// @run-at       document-start
 // @noframes
 // @homepageURL  https://github.com/1837620622
 // ==/UserScript==
@@ -28,11 +29,54 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.5.3';
+  const VERSION = '2.5.4';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
   const SETTINGS_KEY = 'cknb-specimen.settings.v2';
+// ──────────────────────────────────────────────────────────
+  //  ROUTE INSPECTOR · 路由检测（v2.5.0 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
+  // ──────────────────────────────────────────────────────────
+  const ROUTE_NS = NS + '-route';
+  const ROUTE_HISTORY_KEY = 'cknb-route:history:v1';
+  const ROUTE_POW_KEY = 'cknb-route:pow:v1';
+  const ROUTE_PREFS_KEY = 'cknb-route:prefs:v1';
+  const ROUTE_MAX_TURNS = 30;
+  const ROUTE_MAX_HISTORY = 40;
+  const ROUTE_HISTORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  const ROUTE_MAX_STREAM_LINE = 1024 * 1024;
+  const ROUTE_MAX_RECORD_BYTES = 8 * 1024 * 1024;
+  const ROUTE_MAX_POW_BYTES = 256 * 1024;
+  const ROUTE_MAX_WS_FRAME = 2 * 1024 * 1024;
+  const ROUTE_MAX_WS_ITEM = 1024 * 1024;
+  const ROUTE_CAPTURE_TTL = 10 * 60 * 1000;
+  const ROUTE_POW_PATHS = new Set([
+    '/backend-api/sentinel/chat-requirements/prepare',
+    '/backend-anon/sentinel/chat-requirements/prepare',
+    '/api/sentinel/chat-requirements/prepare',
+    '/backend-api/sentinel/chat-requirements',
+    '/backend-anon/sentinel/chat-requirements',
+    '/api/sentinel/chat-requirements'
+  ]);
+  const ROUTE_EMPTY_FIELDS = Object.freeze({
+    requestedModel: null,
+    responseModelSlug: null,
+    defaultModelSlug: null,
+    resolvedModelSlug: null,
+    serverModelSlug: null,
+    domModelSlug: null,
+    thinkingEffort: null,
+    planType: null,
+    requestId: null,
+    conversationId: null,
+    conversationMode: null,
+    selectedSourcesCount: null,
+    toolInvoked: null,
+    toolName: null,
+    isSearch: null,
+    hadImage: null,
+    fastConvo: null
+  });
 
   const EXPORT_TARGETS = [
     { id: 'auth',          label: 'auth.json',     filename: 'auth.json',          desc: 'Codex CLI ~/.codex/auth.json（上游对齐）' },
@@ -187,7 +231,7 @@
       'hd.close': '关闭',
       'hd.lang': 'English',
       'hd.langTip': '切换到英文',
-      'ft.formats': '9 种导出格式',
+      'ft.formats': '9 出 × 11 入 · 路由检测',
       'ft.regions': '支付区域',
       'ft.toggle': '切换',
       'ft.close': '关闭',
@@ -416,6 +460,13 @@
       loading: false,
     },
     fab: { x: persisted.fabX || null, y: persisted.fabY || null },
+    route: {
+      enabled: persisted.routeEnabled === true,
+      turns: [],
+      history: [],
+      pow: null,
+      floatingOpen: persisted.routeFloatingOpen === true,
+    },
   };
 
   // UTILITIES
@@ -590,7 +641,576 @@
     return data;
   }
 
-  // ════════════════════════════════════════════════════════════════
+  
+  // ═══════════════════════════════════════════════════════════
+  //  ROUTE · 工具函数（与 chatgpt-route-inspector core 对齐）
+  // ═══════════════════════════════════════════════════════════
+  function routeAsRecord(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : null; }
+  function routeStringValue(v) { return typeof v === 'string' && v.length ? v : null; }
+  function routeBooleanValue(v) { return typeof v === 'boolean' ? v : null; }
+  function routeBlankFields() { return { ...ROUTE_EMPTY_FIELDS }; }
+  function routeMergeFields(...items) {
+    const out = routeBlankFields();
+    for (const item of items) {
+      if (!item) continue;
+      for (const k of Object.keys(ROUTE_EMPTY_FIELDS)) {
+        if (item[k] !== null && item[k] !== undefined) out[k] = item[k];
+      }
+    }
+    return out;
+  }
+  function routeExtractMetadata(record, modelRole = 'none') {
+    if (!record) return {};
+    const model = routeStringValue(record.model_slug);
+    return {
+      responseModelSlug: modelRole === 'assistant' ? model : null,
+      serverModelSlug: modelRole === 'server' ? model : null,
+      defaultModelSlug: routeStringValue(record.default_model_slug),
+      resolvedModelSlug: routeStringValue(record.resolved_model_slug),
+      planType: routeStringValue(record.plan_type),
+      requestId: routeStringValue(record.request_id),
+      conversationId: routeStringValue(record.conversation_id),
+      toolInvoked: routeBooleanValue(record.tool_invoked),
+      toolName: routeStringValue(record.tool_name),
+      isSearch: routeBooleanValue(record.is_search),
+      hadImage: routeBooleanValue(record.did_prompt_contain_image),
+      fastConvo: routeBooleanValue(record.fast_convo)
+    };
+  }
+  function routeWalkFields(value, out = routeBlankFields(), depth = 0, budget = { n: 0 }) {
+    if (depth > 10 || budget.n++ > 3000) return out;
+    if (Array.isArray(value)) {
+      for (const item of value) out = routeWalkFields(item, out, depth + 1, budget);
+      return out;
+    }
+    const record = routeAsRecord(value);
+    if (!record) return out;
+    const metadata = routeAsRecord(record.metadata);
+    if (record.type === 'server_ste_metadata' && metadata) {
+      out = routeMergeFields(out, routeExtractMetadata(metadata, 'server'));
+    } else {
+      out = routeMergeFields(out, routeExtractMetadata(record));
+      if (metadata) {
+        const author = routeAsRecord(record.author);
+        out = routeMergeFields(out, routeExtractMetadata(metadata, author && author.role === 'assistant' ? 'assistant' : 'none'));
+      }
+    }
+    if (typeof record.conversation_id === 'string') out.conversationId = record.conversation_id;
+    for (const [k, nested] of Object.entries(record)) {
+      if (record.type === 'server_ste_metadata' && k === 'metadata') continue;
+      if (nested && typeof nested === 'object') out = routeWalkFields(nested, out, depth + 1, budget);
+    }
+    return out;
+  }
+  function routeParseSseText(raw) {
+    let fields = routeBlankFields();
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try { fields = routeWalkFields(JSON.parse(payload), fields); } catch {}
+    }
+    return fields;
+  }
+  function routeMessageFields(message) {
+    const metadata = routeAsRecord(message && message.metadata);
+    if (!metadata) return routeBlankFields();
+    const author = routeAsRecord(message.author);
+    let fields = routeMergeFields(routeBlankFields(), routeExtractMetadata(metadata, author && author.role === 'assistant' ? 'assistant' : 'none'));
+    const ste = routeAsRecord(metadata.server_ste_metadata);
+    if (ste) fields = routeMergeFields(fields, routeExtractMetadata(ste, 'server'));
+    return fields;
+  }
+  function routeParseConversationRecord(value) {
+    const rootRecord = routeAsRecord(value);
+    const mapping = routeAsRecord(rootRecord && rootRecord.mapping);
+    if (!mapping) return [];
+    const nodes = [];
+    const byId = new Map();
+    for (const [key, raw] of Object.entries(mapping)) {
+      const node = routeAsRecord(raw);
+      const message = routeAsRecord(node && node.message);
+      const author = routeAsRecord(message && message.author);
+      const entry = {
+        key, id: routeStringValue(message && message.id) || key,
+        parent: routeStringValue(node && node.parent),
+        role: routeStringValue(author && author.role),
+        fields: message ? routeMessageFields(message) : routeBlankFields()
+      };
+      nodes.push(entry);
+      byId.set(key, entry);
+      byId.set(entry.id, entry);
+    }
+    const combineParents = (node) => {
+      let fields = node.fields;
+      let parent = node.parent;
+      const seen = new Set([node.key, node.id]);
+      for (let i = 0; parent && i < 64; i++) {
+        if (seen.has(parent)) break;
+        seen.add(parent);
+        const p = byId.get(parent);
+        if (!p) break;
+        fields = routeMergeFields(p.fields, fields);
+        if (p.role === 'user') break;
+        parent = p.parent;
+      }
+      return fields;
+    };
+    const current = routeStringValue(rootRecord.current_node);
+    if (current) {
+      let node = byId.get(current) || null;
+      const seen = new Set();
+      for (let i = 0; node && i < 64; i++) {
+        if (seen.has(node.key)) break;
+        seen.add(node.key);
+        if (node.role === 'assistant') {
+          const fields = combineParents(node);
+          if (routeHasEvidence(fields)) return [fields];
+          break;
+        }
+        node = node.parent ? (byId.get(node.parent) || null) : null;
+      }
+    }
+    const found = [];
+    const seenRequests = new Set();
+    for (const node of nodes) {
+      if (node.role !== 'assistant') continue;
+      const fields = combineParents(node);
+      if (!routeHasEvidence(fields)) continue;
+      const key = fields.requestId || node.id;
+      if (seenRequests.has(key)) continue;
+      seenRequests.add(key);
+      found.push(fields);
+    }
+    return found;
+  }
+  function routeParseResponseText(raw) {
+    if (/^\s*data:/m.test(raw)) return [routeParseSseText(raw)];
+    try {
+      const parsed = JSON.parse(raw);
+      const conversation = routeParseConversationRecord(parsed);
+      return conversation.length ? conversation : [routeWalkFields(parsed)];
+    } catch { return []; }
+  }
+  function routeParseRequest(raw) {
+    try {
+      const obj = routeAsRecord(JSON.parse(raw));
+      if (!obj) return { fields: routeBlankFields(), correlation: {} };
+      const mode = routeAsRecord(obj.conversation_mode);
+      const messages = Array.isArray(obj.messages) ? obj.messages : [];
+      const first = routeAsRecord(messages[0]);
+      return {
+        fields: routeMergeFields(routeBlankFields(), {
+          requestedModel: routeStringValue(obj.model),
+          thinkingEffort: routeStringValue(obj.thinking_effort),
+          conversationId: routeStringValue(obj.conversation_id),
+          conversationMode: routeStringValue(mode && mode.kind)
+        }),
+        correlation: {
+          conversationId: routeBoundedId(obj.conversation_id),
+          inputMessageId: routeBoundedId(first && first.id),
+          parentMessageId: routeBoundedId(obj.parent_message_id)
+        }
+      };
+    } catch { return { fields: routeBlankFields(), correlation: {} }; }
+  }
+  function routeHasEvidence(fields) {
+    return Boolean(fields && (fields.responseModelSlug || fields.resolvedModelSlug || fields.serverModelSlug));
+  }
+  function routeNormalizedModel(v) { return typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : null; }
+  function routeActualRoute(fields) {
+    const rawModels = [fields && fields.resolvedModelSlug, fields && fields.serverModelSlug].filter(v => typeof v === 'string' && v.trim()).map(v => v.trim());
+    const normalized = [...new Set(rawModels.map(routeNormalizedModel).filter(Boolean))];
+    return { model: normalized.length === 1 ? rawModels[0] : null, normalized: normalized.length === 1 ? normalized[0] : null, conflict: normalized.length > 1 };
+  }
+  function routeAssess(fields) {
+    const requested = routeNormalizedModel(fields && fields.requestedModel);
+    const route = routeActualRoute(fields);
+    if (route.conflict) return { kind: 'conflict', label: '路由冲突', route: null };
+    if (!route.model) return { kind: 'unknown', label: '等待路由', route: null };
+    if (!requested) return { kind: 'unknown', label: '已捕获路由', route: route.model };
+    if (requested === route.normalized) return { kind: 'ok', label: '路由一致', route: route.model };
+    return { kind: 'mismatch', label: '已降级', route: route.model };
+  }
+  function routeFieldSignature(fields) {
+    return JSON.stringify([fields.requestedModel, fields.responseModelSlug, fields.defaultModelSlug, fields.resolvedModelSlug, fields.serverModelSlug, fields.requestId, fields.planType]);
+  }
+  function routeBoundedId(v) { return typeof v === 'string' && v.length > 0 && v.length <= 512 ? v : null; }
+  function routeHistoryContext(path) {
+    if (typeof path !== 'string') return null;
+    if (/^\/c\/[^/]+/.test(path)) return 'conversation';
+    if (path === '/' || path === '') return 'new-chat';
+    return 'other';
+  }
+  function routePruneHistory(items) {
+    const cutoff = Date.now() - ROUTE_HISTORY_TTL_MS;
+    return (Array.isArray(items) ? items : []).filter(item => item && typeof item === 'object' && Date.parse(item.observedAt || '') >= cutoff).slice(0, ROUTE_MAX_HISTORY);
+  }
+  function routeHistorySignature(entry) {
+    const stamp = entry && (entry.completedAt || entry.observedAt) || null;
+    return JSON.stringify([entry && entry.context || null, stamp, entry && entry.requestedModel || null, entry && entry.resolvedModelSlug || null, entry && entry.serverModelSlug || null, entry && entry.responseModelSlug || null, entry && entry.mode || null]);
+  }
+  function routeLoadHistory() {
+    try { const raw = localStorage.getItem(ROUTE_HISTORY_KEY); if (!raw) return []; const parsed = JSON.parse(raw); return routePruneHistory(Array.isArray(parsed) ? parsed : (parsed && parsed.entries) || []); } catch { return []; }
+  }
+  function routeSaveHistory(list) {
+    try { localStorage.setItem(ROUTE_HISTORY_KEY, JSON.stringify(routePruneHistory(list))); } catch {}
+  }
+  function routeLoadPow() {
+    try { const raw = localStorage.getItem(ROUTE_POW_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  }
+  function routeSavePow(pow) { try { if (pow) localStorage.setItem(ROUTE_POW_KEY, JSON.stringify(pow)); else localStorage.removeItem(ROUTE_POW_KEY); } catch {} }
+
+
+  // ── Route state helpers ──
+  function routeHistoryEntry(turn) {
+    const assessment = routeAssess(turn);
+    return {
+      observedAt: turn.observedAt || new Date().toISOString(),
+      completedAt: turn.completedAt || null,
+      context: routeHistoryContext(turn.pagePath),
+      mode: turn.mode || null,
+      source: turn.source || null,
+      requestedModel: turn.requestedModel || null,
+      responseModelSlug: turn.responseModelSlug || null,
+      defaultModelSlug: turn.defaultModelSlug || null,
+      resolvedModelSlug: turn.resolvedModelSlug || null,
+      serverModelSlug: turn.serverModelSlug || null,
+      domModelSlug: turn.domModelSlug || null,
+      thinkingEffort: turn.thinkingEffort || null,
+      planType: turn.planType || null,
+      assessment: assessment.kind,
+      routeModel: assessment.route
+    };
+  }
+  function routeNormalizeTurn(obs) {
+    const fields = routeMergeFields(routeBlankFields(), obs.fields);
+    return {
+      id: obs.id, mode: obs.mode, phase: obs.phase, source: obs.source,
+      observedAt: obs.observedAt, startedAt: obs.startedAt || obs.observedAt, completedAt: obs.completedAt || null,
+      pagePath: obs.pagePath || location.pathname, ...fields
+    };
+  }
+  function routeMergeTurn(turn, obs) {
+    const fields = routeMergeFields(turn, obs.fields);
+    const rank = { requested: 0, responding: 1, completed: 2, failed: 2 };
+    return {
+      ...turn, ...fields,
+      mode: obs.mode || turn.mode,
+      phase: (rank[obs.phase] >= rank[turn.phase] ? obs.phase : turn.phase),
+      source: obs.source || turn.source,
+      observedAt: obs.observedAt, completedAt: obs.completedAt || turn.completedAt,
+      pagePath: obs.pagePath || turn.pagePath || location.pathname
+    };
+  }
+  let routePending = new Map();
+  let routeHistoryTimers = new Map();
+  function routePrunePending() { const now = Date.now(); for (const [id, item] of routePending) if (item.expiresAt <= now) routePending.delete(id); }
+  function routeRegisterPending(id, startedAt, correlation) {
+    if (!correlation || (!correlation.conversationId && !correlation.inputMessageId && !correlation.parentMessageId)) return;
+    routePrunePending();
+    while (routePending.size >= 32) routePending.delete(routePending.keys().next().value);
+    routePending.set(id, { id, startedAt, expiresAt: Date.now() + ROUTE_CAPTURE_TTL, conversationId: correlation.conversationId || null, inputMessageId: correlation.inputMessageId || null, parentMessageId: correlation.parentMessageId || null, fields: routeBlankFields(), lastSig: '' });
+  }
+  function routeUpsertObservation(obs) {
+    if (!state.route.enabled) return;
+    let idx = state.route.turns.findIndex(t => t.id === obs.id);
+    if (idx < 0 && obs.fields && obs.fields.requestId && obs.fields.conversationId) {
+      idx = state.route.turns.findIndex(t => t.mode === obs.mode && t.requestId === obs.fields.requestId && t.conversationId === obs.fields.conversationId);
+    }
+    let turn;
+    if (idx < 0) { turn = routeNormalizeTurn(obs); state.route.turns.unshift(turn); }
+    else { turn = routeMergeTurn(state.route.turns[idx], obs); state.route.turns[idx] = turn; }
+    state.route.turns.sort((a,b) => Date.parse(b.observedAt) - Date.parse(a.observedAt));
+    state.route.turns = state.route.turns.slice(0, ROUTE_MAX_TURNS);
+    if (obs.mode === 'live' && (obs.phase === 'completed' || obs.phase === 'failed')) routeScheduleHistoryCommit(turn.id);
+    routeRenderFloating();
+    if (state.activeTab === 'route') refreshBody();
+  }
+  function routeEmit(id, source, mode, phase, fields, startedAt, completedAt = null) {
+    routeUpsertObservation({ id, source, mode, phase, fields, observedAt: new Date().toISOString(), startedAt, completedAt, pagePath: location.pathname });
+  }
+  function routeScheduleHistoryCommit(turnId) {
+    const old = routeHistoryTimers.get(turnId);
+    if (old) clearTimeout(old);
+    routeHistoryTimers.set(turnId, setTimeout(() => {
+      routeHistoryTimers.delete(turnId);
+      const turn = state.route.turns.find(t => t.id === turnId);
+      if (!turn || !routeHasEvidence(turn)) return;
+      const entry = routeHistoryEntry(turn);
+      const sig = routeHistorySignature(entry);
+      const idx = state.route.history.findIndex(item => routeHistorySignature(item) === sig);
+      if (idx >= 0) state.route.history[idx] = entry; else state.route.history.unshift(entry);
+      state.route.history = routePruneHistory(state.route.history.sort((a,b) => Date.parse(b.observedAt || 0) - Date.parse(a.observedAt || 0)));
+      routeSaveHistory(state.route.history);
+      routeRenderFloating();
+      if (state.activeTab === 'route') refreshBody();
+    }, 900));
+  }
+  function routeLatestTurn() {
+    const useful = t => t && (t.requestedModel || t.resolvedModelSlug || t.serverModelSlug || t.responseModelSlug);
+    return state.route.turns.find(t => useful(t) && t.pagePath === location.pathname) || state.route.turns.find(useful) || null;
+  }
+  function routeClassifyUrl(raw) {
+    try {
+      const url = new URL(raw, location.href);
+      if (url.origin !== location.origin) return { kind: 'other', conversationId: null };
+      const path = url.pathname.length > 1 ? url.pathname.replace(/\/$/, '') : url.pathname;
+      if (path === '/backend-api/f/conversation') return { kind: 'stream', conversationId: null };
+      if (ROUTE_POW_PATHS.has(path)) return { kind: 'pow', conversationId: null };
+      const m = /^\/backend-api\/conversation\/([^/]+)$/.exec(url.pathname);
+      if (m) return { kind: 'record', conversationId: decodeURIComponent(m[1]) };
+    } catch {}
+    return { kind: 'other', conversationId: null };
+  }
+  async function routeGetRequestBody(input, init) {
+    if (typeof init !== 'undefined' && init && typeof init.body === 'string') return init.body;
+    if (input instanceof Request) { try { return await input.clone().text(); } catch { return null; } }
+    return null;
+  }
+  async function routeParseSseStream(response, id, startedAt, baseFields) {
+    const body = response.body;
+    if (!body) return;
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fields = routeMergeFields(routeBlankFields(), baseFields);
+    let lastSig = routeFieldSignature(fields);
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      if (buffer.length > ROUTE_MAX_STREAM_LINE && !buffer.includes('\n')) { try { await reader.cancel(); } catch {} return; }
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.length > ROUTE_MAX_STREAM_LINE || !line.startsWith('data:')) continue;
+        const parsed = routeParseSseText(line);
+        fields = routeMergeFields(fields, parsed);
+        const sig = routeFieldSignature(fields);
+        if (sig !== lastSig) { lastSig = sig; routeEmit(id, 'fetch', 'live', 'responding', fields, startedAt); }
+      }
+      if (done) break;
+    }
+    if (buffer.startsWith('data:')) fields = routeMergeFields(fields, routeParseSseText(buffer));
+    routeEmit(id, 'fetch', 'live', 'completed', fields, startedAt, new Date().toISOString());
+  }
+  async function routeParseConversationResponse(response, id, startedAt, conversationId) {
+    const declared = Number(response.headers.get('content-length') || 0);
+    if (declared > ROUTE_MAX_RECORD_BYTES) return;
+    const raw = await response.text();
+    if (raw.length > ROUTE_MAX_RECORD_BYTES) return;
+    const results = routeParseResponseText(raw).filter(routeHasEvidence);
+    results.forEach((fields, i) => routeEmit(`${id}:${fields.requestId || i}`, 'reload', 'reload', 'completed', routeMergeFields(fields, { conversationId: conversationId || fields.conversationId }), startedAt, new Date().toISOString()));
+  }
+  async function routeParsePowResponse(response) {
+    const declared = Number(response.headers.get('content-length') || 0);
+    if (declared > ROUTE_MAX_POW_BYTES) return;
+    const raw = await response.text();
+    if (raw.length > ROUTE_MAX_POW_BYTES) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { return; }
+    const difficulty = routeFindPowDifficulty(parsed);
+    if (!difficulty) return;
+    state.route.pow = { ...difficulty, observedAt: new Date().toISOString() };
+    routeSavePow(state.route.pow);
+    routeRenderFloating();
+    if (state.activeTab === 'route') refreshBody();
+  }
+  function routeFindPowDifficulty(value) {
+    const root = routeAsRecord(value);
+    if (!root) return null;
+    const roots = [root, routeAsRecord(root.chat_requirements), routeAsRecord(root.requirements)].filter(Boolean);
+    for (const cand of roots) {
+      const pow = routeAsRecord(cand.proofofwork) || routeAsRecord(cand.proof_of_work) || routeAsRecord(cand.pow);
+      const raw = typeof pow?.difficulty === 'string' ? pow.difficulty.trim() : '';
+      if (!raw || raw.length > 256) continue;
+      const m = /^(?:0[xX])?([0-9a-fA-F]+)$/.exec(raw);
+      if (!m) continue;
+      try { return { rawHex: raw, decimal: BigInt(`0x${m[1]}`).toString(10) }; } catch {}
+    }
+    return null;
+  }
+  function routeCaptureId() {
+    try { if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID(); } catch {}
+    return `cknb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+  function routeInstallFetchHook() {
+    try {
+      const win = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+      const nativeAtStart = win.fetch;
+      if (!nativeAtStart || win.__CKNB_FETCH_HOOKED__) return;
+      win.__CKNB_FETCH_HOOKED__ = true;
+      async function inspectFetch(downstream, receiver, input, init) {
+        const url = input instanceof Request ? input.url : String(input);
+        const endpoint = routeClassifyUrl(url);
+        if (endpoint.kind === 'other') return downstream.call(receiver, input, init);
+        const id = routeCaptureId();
+        const startedAt = new Date().toISOString();
+        let requestFieldsPromise = Promise.resolve(routeBlankFields());
+        if (endpoint.kind === 'stream') {
+          requestFieldsPromise = routeGetRequestBody(input, init).then(raw => {
+            if (!raw) return routeBlankFields();
+            const parsed = routeParseRequest(raw);
+            routeRegisterPending(id, startedAt, parsed.correlation);
+            routeEmit(id, 'fetch', 'live', 'requested', parsed.fields, startedAt);
+            return parsed.fields;
+          }).catch(() => routeBlankFields());
+        }
+        const response = await downstream.call(receiver, input, init);
+        let clone; try { clone = response.clone(); } catch { return response; }
+        if (endpoint.kind === 'pow') { routeParsePowResponse(clone).catch(() => {}); }
+        else if (endpoint.kind === 'stream') { requestFieldsPromise.then(fields => routeParseSseStream(clone, id, startedAt, fields)).catch(()=>{}); }
+        else if (endpoint.kind === 'record') { routeParseConversationResponse(clone, id, startedAt, endpoint.conversationId).catch(()=>{}); }
+        return response;
+      }
+      function makeGeneration(downstream, capturesRaw) {
+        const gen = { downstream, capturesRaw, wrapper: null };
+        gen.wrapper = async function(input, init) {
+          const receiver = this ?? win;
+          if (gen.capturesRaw) return inspectFetch(gen.downstream, receiver, input, init);
+          return gen.downstream.call(receiver, input, init);
+        };
+        try { Object.defineProperty(gen.wrapper, 'name', { value: 'fetch', configurable: true }); const t = Function.prototype.toString.call(downstream); Object.defineProperty(gen.wrapper, 'toString', { value: () => t, configurable: true }); } catch {}
+        return gen;
+      }
+      let current = makeGeneration(nativeAtStart, true);
+      function adopt(candidate) { if (typeof candidate !== 'function' || candidate === current.wrapper) return; current = makeGeneration(candidate, candidate === nativeAtStart); }
+      const getter = () => current.wrapper;
+      const setter = (candidate) => adopt(candidate);
+      function ensure() {
+        try {
+          const d = Object.getOwnPropertyDescriptor(win, 'fetch');
+          if (d && d.get === getter && d.set === setter) return;
+          adopt(win.fetch);
+          Object.defineProperty(win, 'fetch', { configurable: true, enumerable: d?.enumerable ?? true, get: getter, set: setter });
+        } catch { try { win.fetch = current.wrapper; } catch {} }
+      }
+      ensure(); queueMicrotask(ensure); document.addEventListener('DOMContentLoaded', ensure, { once: true }); window.addEventListener('load', ensure, { once: true }); setInterval(ensure, 1500);
+    } catch (e) { console.warn('[CKNB route] fetch hook install failed', e); }
+  }
+  function routeBoundedIdLocal(v) { return typeof v === 'string' && v.length > 0 && v.length <= 512 ? v : null; }
+  function routeAddUnique(list, v) { if (v && list.length < 8 && !list.includes(v)) list.push(v); }
+  function routeCollectCorrelation(value, acc, depth = 0) {
+    if (depth > 8 || acc.visited++ > 500) return;
+    if (Array.isArray(value)) { for (const item of value.slice(0, 32)) routeCollectCorrelation(item, acc, depth + 1); return; }
+    const record = routeAsRecord(value); if (!record) return;
+    routeAddUnique(acc.conversationIds, routeBoundedIdLocal(record.conversation_id));
+    routeAddUnique(acc.parentIds, routeBoundedIdLocal(record.parent_id));
+    routeAddUnique(acc.parentIds, routeBoundedIdLocal(record.parent));
+    if (routeAsRecord(record.author)) routeAddUnique(acc.messageIds, routeBoundedIdLocal(record.id));
+    const message = routeAsRecord(record.message); if (message) routeAddUnique(acc.messageIds, routeBoundedIdLocal(message.id));
+    if (record.type === 'server_ste_metadata') acc.terminal = true;
+    for (const nested of Object.values(record)) if (nested && typeof nested === 'object') routeCollectCorrelation(nested, acc, depth + 1);
+  }
+  function routeParseWsFrame(raw) {
+    if (!raw || raw.length > ROUTE_MAX_WS_FRAME) return [];
+    let parsed; try { parsed = JSON.parse(raw); } catch { return []; }
+    if (!Array.isArray(parsed)) return [];
+    const results = [];
+    for (const envelope of parsed.slice(0, 16)) {
+      const encoded = routeAsRecord(routeAsRecord(routeAsRecord(envelope)?.payload)?.payload)?.encoded_item;
+      if (typeof encoded !== 'string' || !encoded || encoded.length > ROUTE_MAX_WS_ITEM) continue;
+      const acc = { conversationIds: [], messageIds: [], parentIds: [], terminal: false, visited: 0 };
+      for (const line of encoded.split(/\r?\n/)) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        if (payload === '[DONE]') { acc.terminal = true; continue; }
+        try { routeCollectCorrelation(JSON.parse(payload), acc); } catch {}
+      }
+      const fields = routeParseSseText(encoded);
+      routeAddUnique(acc.conversationIds, fields.conversationId);
+      results.push({ fields, ...acc });
+    }
+    return results;
+  }
+  function routeSelectPending(evidence) {
+    routePrunePending();
+    const all = [...routePending.values()];
+    const unique = items => items.length === 1 ? items[0] : null;
+    let matches = all.filter(p => p.inputMessageId && (evidence.messageIds.includes(p.inputMessageId) || evidence.parentIds.includes(p.inputMessageId)));
+    if (matches.length) return unique(matches);
+    matches = all.filter(p => p.parentMessageId && evidence.parentIds.includes(p.parentMessageId) && (!evidence.conversationIds.length || !p.conversationId || evidence.conversationIds.includes(p.conversationId)));
+    if (matches.length) return unique(matches);
+    matches = all.filter(p => p.conversationId && evidence.conversationIds.includes(p.conversationId));
+    return unique(matches);
+  }
+  function routeHandleWsText(raw) {
+    const grouped = new Map();
+    for (const evidence of routeParseWsFrame(raw)) {
+      const p = routeSelectPending(evidence);
+      if (!p) continue;
+      if (!p.conversationId && evidence.conversationIds.length === 1) p.conversationId = evidence.conversationIds[0] || null;
+      const cur = grouped.get(p.id);
+      grouped.set(p.id, { pending: p, fields: routeMergeFields(cur?.fields || p.fields, evidence.fields, { conversationId: p.conversationId }), terminal: Boolean(cur?.terminal || evidence.terminal) });
+    }
+    for (const { pending: p, fields, terminal } of grouped.values()) {
+      p.fields = fields;
+      const sig = routeFieldSignature(fields);
+      if (routeHasEvidence(fields) && (sig !== p.lastSig || terminal)) {
+        p.lastSig = sig;
+        routeEmit(p.id, 'websocket', 'live', terminal ? 'completed' : 'responding', fields, p.startedAt, terminal ? new Date().toISOString() : null);
+      }
+      if (terminal) routePending.delete(p.id);
+    }
+  }
+  function routeInstallWebSocketHook() {
+    try {
+      const win = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+      const Native = win.WebSocket;
+      if (!Native || win.__CKNB_WS_HOOKED__) return;
+      win.__CKNB_WS_HOOKED__ = true;
+      const observed = new WeakSet();
+      function isChatSocket(url) {
+        try { const u = new URL(url, location.href); return (u.protocol === 'ws:' || u.protocol === 'wss:') && (u.hostname === 'chatgpt.com' || u.hostname.endsWith('.chatgpt.com') || u.hostname === 'openai.com' || u.hostname.endsWith('.openai.com')); } catch { return false; }
+      }
+      function observe(socket) {
+        if (observed.has(socket) || !isChatSocket(socket.url)) return;
+        observed.add(socket);
+        socket.addEventListener('message', (event) => { if (typeof event.data === 'string') queueMicrotask(() => routeHandleWsText(event.data)); });
+      }
+      function shapeWrapper(wrapper, downstream) {
+        try { Object.setPrototypeOf(wrapper, Object.getPrototypeOf(downstream)); } catch {}
+        try { Object.defineProperty(wrapper, 'prototype', { value: downstream.prototype, writable: false, enumerable: false, configurable: false }); } catch {}
+        try { Object.defineProperty(wrapper, 'name', { value: 'WebSocket', configurable: true }); } catch {}
+        for (const key of ['CONNECTING','OPEN','CLOSING','CLOSED']) { const d = Object.getOwnPropertyDescriptor(downstream, key) || Object.getOwnPropertyDescriptor(Native, key); if (!d) continue; try { Object.defineProperty(wrapper, key, d); } catch {} }
+        try { const t = Function.prototype.toString.call(downstream); Object.defineProperty(wrapper, 'toString', { value: () => t, configurable: true }); } catch {}
+      }
+      function makeGeneration(downstream, capturesRaw) {
+        const gen = { downstream, capturesRaw, wrapper: null };
+        gen.wrapper = function(url, protocols) {
+          if (!new.target) throw new TypeError("Failed to construct 'WebSocket': Please use the 'new' operator.");
+          const args = arguments.length > 1 ? [url, protocols] : [url];
+          const invokedTarget = new.target;
+          const newTarget = invokedTarget === gen.wrapper ? gen.downstream : invokedTarget;
+          const socket = Reflect.construct(gen.downstream, args, newTarget);
+          if (gen.capturesRaw) observe(socket);
+          return socket;
+        };
+        shapeWrapper(gen.wrapper, downstream);
+        return gen;
+      }
+      let current = makeGeneration(Native, true);
+      function adopt(candidate) { if (typeof candidate !== 'function' || candidate === current.wrapper) return; current = makeGeneration(candidate, candidate === Native); }
+      const getter = () => current.wrapper;
+      const setter = (candidate) => adopt(candidate);
+      function ensure() {
+        try {
+          const d = Object.getOwnPropertyDescriptor(win, 'WebSocket');
+          if (d && d.get === getter && d.set === setter) return;
+          adopt(win.WebSocket);
+          Object.defineProperty(win, 'WebSocket', { configurable: true, enumerable: d?.enumerable ?? true, get: getter, set: setter });
+        } catch { try { win.WebSocket = current.wrapper; } catch {} }
+      }
+      ensure(); queueMicrotask(ensure); document.addEventListener('DOMContentLoaded', ensure, { once: true }); window.addEventListener('load', ensure, { once: true }); setInterval(() => { ensure(); routePrunePending(); }, 1500);
+    } catch (e) { console.warn('[CKNB route] ws hook failed', e); }
+  }
+  function routeModelText(v) { return v === null || v === undefined || v === '' ? '—' : String(v); }
+  function routeFormatPow(pow) { if (!pow) return '—'; const d = pow.decimal || '—'; return d.length > 18 ? `${d.slice(0,8)}…${d.slice(-6)}` : d; }
+  function routeShortTime(iso) { const d = new Date(iso); if (!Number.isFinite(d.getTime())) return ''; return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+  function routeInstallHooksIfEnabled() { if (!state.route.enabled) return; routeInstallFetchHook(); routeInstallWebSocketHook(); }
+
+// ════════════════════════════════════════════════════════════════
   //  长链引擎 v2.4.0 —— 对齐本地「最新长链」服务端三步法
   // ----------------------------------------------------------------
   //  旧版（v2.3.x）只在 hosted 响应里直接取 data.url，或拿 client_secret
@@ -1538,7 +2158,8 @@
     if (!ok) throw new Error('复制失败，请手动复制。');
   }
   function downloadText(filename, text) {
-    const blob = new Blob([text], { type: 'application/json' });
+    const isMd = typeof filename === 'string' && filename.toLowerCase().endsWith('.md');
+    const blob = new Blob([text], { type: isMd ? 'text/markdown;charset=utf-8' : 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename; a.rel = 'noopener';
@@ -2119,6 +2740,75 @@
     '#' + NS + '-modal .imp-chip-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '#' + NS + '-modal input[type="file"].ipt { padding: 7px 10px; font-size: 12px; }',
 
+
+    /* ─── Route Inspector Floating ─── */
+    '#' + NS + '-route-host, #' + NS + '-route-pill {',
+    '  all: initial; box-sizing: border-box;',
+    '  font-family: "PingFang SC", "HarmonyOS Sans SC", "Noto Sans SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;',
+    '  -webkit-font-smoothing: antialiased;',
+    '}',
+    '#' + NS + '-route-host *, #' + NS + '-route-pill * { box-sizing: border-box; font: inherit; }',
+    '#' + NS + '-route-pill {',
+    '  position: fixed; left: 16px; bottom: 16px; z-index: 2147483645;',
+    '  display: inline-flex; align-items: center; gap: 6px;',
+    '  min-height: 28px; max-width: min(260px, calc(100vw - 32px));',
+    '  padding: 6px 10px; cursor: pointer; user-select: none;',
+    '  background: #ffffff; color: #1a1614;',
+    '  border: 1px solid #e8e6e0; border-radius: 999px;',
+    '  box-shadow: 0 4px 14px rgba(20,16,12,.10), 0 1px 3px rgba(20,16,12,.06);',
+    '  font-size: 12px; font-weight: 600;',
+    '  transition: transform .14s ease-out, box-shadow .14s ease-out;',
+    '}',
+    '#' + NS + '-route-pill:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(20,16,12,.14); border-color: #ffcfbe; }',
+    '#' + NS + '-route-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #aaa5a0; flex-shrink: 0; }',
+    '#' + NS + '-route-pill[data-kind="ok"] .dot { background: #16a34a; }',
+    '#' + NS + '-route-pill[data-kind="mismatch"] .dot { background: #f59e0b; }',
+    '#' + NS + '-route-pill[data-kind="conflict"] .dot { background: #dc2626; }',
+    '#' + NS + '-route-pill .pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '#' + NS + '-route-host {',
+    '  position: fixed; left: 16px; bottom: 56px; z-index: 2147483645;',
+    '  width: 300px; max-height: min(62vh, 520px);',
+    '  background: #ffffff; color: #1a1614;',
+    '  border: 1px solid #e8e6e0; border-radius: 12px;',
+    '  box-shadow: 0 16px 40px rgba(20,16,12,.14), 0 4px 10px rgba(20,16,12,.06);',
+    '  display: none; flex-direction: column; overflow: hidden;',
+    '}',
+    '#' + NS + '-route-host[data-open="true"] { display: flex; }',
+    '#' + NS + '-route-host .rhd { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #f0eeea; cursor: move; user-select: none; background: #fafaf8; }',
+    '#' + NS + '-route-host .rhd-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #1a1614; }',
+    '#' + NS + '-route-host .rhd-title .dot { width: 7px; height: 7px; border-radius: 50%; background: #aaa5a0; }',
+    '#' + NS + '-route-host[data-kind="ok"] .rhd-title .dot { background: #16a34a; }',
+    '#' + NS + '-route-host[data-kind="mismatch"] .rhd-title .dot { background: #f59e0b; }',
+    '#' + NS + '-route-host[data-kind="conflict"] .rhd-title .dot { background: #dc2626; }',
+    '#' + NS + '-route-host .rhd-actions { display: flex; gap: 6px; align-items: center; }',
+    '#' + NS + '-route-host .rhd-btn { width: 24px; height: 24px; border: 1px solid #e8e6e0; background: #fff; color: #6b6660; border-radius: 6px; cursor: pointer; display: grid; place-items: center; }',
+    '#' + NS + '-route-host .rhd-btn:hover { border-color: #ffcfbe; color: #ff5722; background: #fef4f1; }',
+    '#' + NS + '-route-host .rbd { padding: 12px; overflow-y: auto; flex: 1; min-height: 120px; }',
+    '#' + NS + '-route-host .rbd::-webkit-scrollbar { width: 6px; }',
+    '#' + NS + '-route-host .rbd::-webkit-scrollbar-thumb { background: #e8e6e0; border-radius: 3px; }',
+    '#' + NS + '-route-host .rfield { margin-bottom: 10px; }',
+    '#' + NS + '-route-host .rlabel { font-size: 10px; letter-spacing: .08em; color: #aaa5a0; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }',
+    '#' + NS + '-route-host .rvalue { font-size: 13px; font-weight: 600; color: #1a1614; overflow-wrap: anywhere; }',
+    '#' + NS + '-route-host .rvalue.mismatch { color: #9a620f; }',
+    '#' + NS + '-route-host .rvalue.conflict { color: #dc2626; }',
+    '#' + NS + '-route-host .rmeta { display: grid; grid-template-columns: 72px 1fr; gap: 4px 8px; font-size: 11px; color: #6b6660; margin-top: 8px; }',
+    '#' + NS + '-route-host .rmeta b { color: #1a1614; font-weight: 600; }',
+    '#' + NS + '-route-host .rstatus { margin-top: 8px; padding: 8px 10px; background: #fafaf8; border: 1px solid #f0eeea; border-left: 3px solid #ff5722; border-radius: 6px; font-size: 11px; color: #6b6660; }',
+    '#' + NS + '-route-host .rstatus.ok { border-left-color: #16a34a; background: #f0fdf4; color: #166534; }',
+    '#' + NS + '-route-host .rstatus.mismatch { border-left-color: #f59e0b; background: #fffbeb; color: #92400e; }',
+    '#' + NS + '-route-host .rstatus.conflict { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }',
+    '#' + NS + '-route-host .rlist { margin-top: 10px; border-top: 1px dashed #f0eeea; padding-top: 10px; }',
+    '#' + NS + '-route-host .rlist-hd { font-size: 10px; color: #aaa5a0; font-weight: 700; letter-spacing: .06em; margin-bottom: 6px; }',
+    '#' + NS + '-route-host .ritem { padding: 8px 10px; border: 1px solid #f0eeea; border-radius: 8px; margin-bottom: 6px; background: #fafaf8; cursor: pointer; }',
+    '#' + NS + '-route-host .ritem:hover { border-color: #ffcfbe; background: #fff; }',
+    '#' + NS + '-route-host .ritem-top { display: flex; justify-content: space-between; font-size: 11px; color: #6b6660; }',
+    '#' + NS + '-route-host .ritem-main { font-size: 12px; font-weight: 600; color: #1a1614; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '#' + NS + '-route-host .racts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }',
+    '#' + NS + '-route-host .rbtn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid #e8e6e0; background: #fff; color: #1a1614; border-radius: 6px; font-size: 11px; cursor: pointer; }',
+    '#' + NS + '-route-host .rbtn:hover { background: #fafaf8; border-color: #c9c5bd; }',
+    '#' + NS + '-route-host .rbtn.primary { background: #ff5722; color: #fff; border-color: #ff5722; }',
+    '#' + NS + '-route-host .rbtn.primary:hover { background: #e63b1d; }',
+
     /* ─── Segmented Control · Token 来源切换 (v2.3.4) ─── */
     '#' + NS + '-modal .seg { display: inline-flex; gap: 0; padding: 3px; background: #fafaf8; border: 1px solid #e8e6e0; border-radius: 8px; margin-bottom: 10px; }',
     '#' + NS + '-modal .seg-item {',
@@ -2163,6 +2853,7 @@
     if (id === 'plus') return { num: '02', label: t('tab.plus') };
     if (id === 'team') return { num: '03', label: t('tab.team') };
     if (id === 'imp')  return { num: '04', label: t('tab.imp') };
+    if (id === 'route') return { num: '05', label: t('tab.route') || '路由检测' };
     return { num: '', label: id };
   }
   function planClass(p) {
@@ -2497,11 +3188,309 @@
     ].join('');
   }
 
-  function renderBody() {
+function renderRouteTab() {
+    const r = state.route;
+    const latest = routeLatestTurn();
+    const assessInfo = latest ? routeAssess(latest) : { kind: 'unknown', label: '等待路由' };
+    const powText = r.pow ? `${r.pow.rawHex} (${r.pow.decimal})` : '—';
+    const historyCount = r.history ? r.history.length : 0;
+    const toggleOn = r.enabled;
+    return [
+      '<div class="lbl">路由检测开关<span class="hint">' + (toggleOn ? '已开启 · 悬浮窗可拖拽' : '已关闭 · 不会嗅探') + '</span></div>',
+      '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fafaf8;border:1px solid #f0eeea;border-radius:10px;margin-bottom:14px">',
+      '  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">',
+      '    <input type="checkbox" id="' + NS + '-route-toggle" ' + (toggleOn ? 'checked' : '') + ' style="width:16px;height:16px;accent-color:#ff5722">',
+      '    <span style="font-size:13px;font-weight:600;color:#1a1614">' + (toggleOn ? '已开启路由悬浮检测' : '开启路由检测') + '</span>',
+      '  </label>',
+      '  <span style="margin-left:auto;font-size:11px;color:#aaa5a0">' + (toggleOn ? '实时捕获 fetch/WebSocket' : '关闭后不影响对话') + '</span>',
+      '</div>',
+      !toggleOn ? '<div class="stat">开启后将在页面左下角出现一个小悬浮窗（可任意拖拽），实时显示 <b>请求模型 → 实际路由模型</b>，并记录最近 ' + ROUTE_MAX_TURNS + ' 次对话的路由证据。关闭即隐藏，不会干扰对话。</div>' : '',
+      toggleOn ? [
+        '<div class="lbl" style="margin-top:14px">实时捕获<span class="hint">' + (latest ? '最新一条 · ' + routeShortTime(latest.observedAt) : '暂未捕获') + '</span></div>',
+        latest ? [
+          '<div class="spec" style="grid-template-columns: 48px 1fr">',
+          '  <div class="spec-mono" style="background:' + (assessInfo.kind === 'ok' ? '#16a34a' : assessInfo.kind === 'mismatch' ? '#f59e0b' : assessInfo.kind === 'conflict' ? '#dc2626' : '#6b6660') + '">' + (latest.requestedModel ? latest.requestedModel.charAt(0).toUpperCase() : 'R') + '</div>',
+          '  <div class="spec-info">',
+          '    <div class="spec-email" style="font-size:13px">' + escapeHtml(routeModelText(latest.requestedModel)) + ' → ' + escapeHtml(routeModelText(assessInfo.route || latest.resolvedModelSlug || latest.serverModelSlug)) + '</div>',
+          '    <div class="spec-meta"><span class="pill ' + (assessInfo.kind === 'ok' ? '' : assessInfo.kind === 'mismatch' ? 'danger' : assessInfo.kind === 'conflict' ? 'danger' : '') + '" style="background:' + (assessInfo.kind === 'ok' ? '#16a34a' : assessInfo.kind === 'mismatch' ? '#f59e0b' : assessInfo.kind === 'conflict' ? '#dc2626' : '#6b6660') + '">' + escapeHtml(assessInfo.label) + '</span><span>来源 <b>' + escapeHtml(latest.source || '—') + ' · ' + escapeHtml(latest.mode || '—') + '</b></span><span>phase <b>' + escapeHtml(latest.phase || '—') + '</b></span></div>',
+          '  </div>',
+          '</div>',
+          '<div class="grid2" style="margin-bottom:10px">',
+          '  <div class="row" style="margin-bottom:0"><label>请求模型</label><div class="ipt" style="background:#fafaf8">' + escapeHtml(routeModelText(latest.requestedModel)) + '</div></div>',
+          '  <div class="row" style="margin-bottom:0"><label>实际路由</label><div class="ipt" style="background:' + (assessInfo.kind === 'ok' ? '#f0fdf4' : assessInfo.kind === 'mismatch' ? '#fffbeb' : assessInfo.kind === 'conflict' ? '#fef2f2' : '#fafaf8') + '">' + escapeHtml(routeModelText(assessInfo.route || latest.resolvedModelSlug || latest.serverModelSlug)) + '</div></div>',
+          '</div>',
+          '<div class="row"><label>PoW 难度（最新）</label><div class="ipt" style="font-size:11px;background:#fafaf8">' + escapeHtml(powText) + '</div></div>',
+          '<div class="stat ' + (assessInfo.kind === 'ok' ? 'ok' : assessInfo.kind === 'mismatch' ? '' : assessInfo.kind === 'conflict' ? 'err' : '') + '">' + (assessInfo.kind === 'ok' ? '✅ 路由一致 · 请求与响应模型相同' : assessInfo.kind === 'mismatch' ? '⚠️ 检测到降级 · 请求 ' + escapeHtml(routeModelText(latest.requestedModel)) + ' 被路由到 ' + escapeHtml(routeModelText(assessInfo.route)) : assessInfo.kind === 'conflict' ? '❌ 路由冲突 · resolved 与 server 两个字段不一致' : '等待更多路由证据…') + '</div>',
+        ].join('') : '<div class="imp-empty">暂未捕获到任何路由<br><span style="font-size:11px;color:#aaa5a0">发送一条新消息，或刷新已有会话触发会话重载检测</span></div>',
+        '<div class="lbl" style="margin-top:14px">抓包历史<span class="hint">' + historyCount + ' 条 · 最多 ' + ROUTE_MAX_HISTORY + ' · 自动过期 30 天</span></div>',
+        r.history && r.history.length ? [
+          '<div style="max-height:240px;overflow-y:auto;border:1px solid #f0eeea;border-radius:8px;background:#fafaf8;padding:8px">',
+          r.history.slice(0, 12).map((h,i) => {
+            const a = routeAssess(h);
+            const c = a.kind === 'ok' ? '#16a34a' : a.kind === 'mismatch' ? '#f59e0b' : a.kind === 'conflict' ? '#dc2626' : '#aaa5a0';
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #f0eeea;border-radius:6px;margin-bottom:6px"><span style="width:7px;height:7px;border-radius:50%;background:' + c + ';flex-shrink:0"></span><span style="font-size:12px;color:#1a1614;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(routeModelText(h.requestedModel)) + ' → ' + escapeHtml(routeModelText(a.route || h.resolvedModelSlug || h.serverModelSlug)) + ' · ' + escapeHtml(a.label) + '</span><span style="font-size:10px;color:#aaa5a0">' + escapeHtml(routeShortTime(h.observedAt)) + '</span></div>';
+          }).join(''),
+          '</div>',
+        ].join('') : '<div class="imp-empty" style="margin-top:0">暂无历史</div>',
+        '<div class="acts" style="margin-top:12px">',
+        '  <button class="btn primary" data-action="route-copy">' + icon('copy', 12) + ' <span>复制最新诊断</span></button>',
+        '  <button class="btn" data-action="route-export-json">' + icon('download', 12) + ' <span>导出 JSON</span></button>',
+        '  <button class="btn" data-action="route-export-md">' + icon('archive', 12) + ' <span>导出 Markdown</span></button>',
+        '  <button class="btn ghost" data-action="route-clear">' + icon('close', 12) + ' <span>清空历史</span></button>',
+        '</div>',
+        '<div class="stat" style="margin-top:12px">导出的 JSON 含完整路由证据（requested/resolved/server/PoW/时间戳等），Markdown 为可直接粘贴到 issue 的表格。所有数据仅保存在本地，不上传任何服务器。</div>',
+      ].join('') : '',
+    ].filter(Boolean).join('');
+  }
+  async function routeCopyDiagnostics() {
+    const turn = routeLatestTurn();
+    if (!turn || !routeHasEvidence(turn)) { toast('暂无可复制的路由证据，请先发送消息', 'error'); return; }
+    const pow = state.route.pow;
+    const diag = turn ? routeAssess(turn) : { kind: 'unknown', label: '无数据', route: null };
+    const lines = [
+      `Requested: ${routeModelText(turn && turn.requestedModel)}`,
+      `Resolved: ${routeModelText(diag.route || (turn && (turn.resolvedModelSlug || turn.serverModelSlug)))}`,
+      `Model label: ${routeModelText(turn && turn.responseModelSlug)}`,
+      `Default: ${routeModelText(turn && turn.defaultModelSlug)}`,
+      `Thinking: ${routeModelText(turn && turn.thinkingEffort)}`,
+      `Plan: ${routeModelText(turn && turn.planType)}`,
+      `PoW: ${pow ? pow.decimal + ' (' + pow.rawHex + ')' : '—'}`,
+      `Status: ${diag.label}`,
+      `Source: ${turn ? (turn.source + ' · ' + turn.mode + ' · ' + turn.phase) : '—'}`,
+      `Updated: ${turn && turn.observedAt || '—'}`,
+    ];
+    try { await copyText(lines.join('\n')); toast('已复制诊断文本', 'success'); } catch (e) { toast(e.message || String(e), 'error'); }
+  }
+  function routeExportJson() {
+    const payload = { schema: 1, exportedAt: new Date().toISOString(), current: routeLatestTurn(), powLatest: state.route.pow, history: state.route.history, turns: state.route.turns };
+    try { downloadText('chatgpt-route-' + new Date().toISOString().replace(/[:.]/g,'-') + '.json', JSON.stringify(payload, null, 2)); toast('已导出 JSON', 'success'); } catch (e) { toast(e.message || String(e), 'error'); }
+  }
+  function routeExportMarkdown() {
+    const hist = state.route.history || [];
+    let md = `# ChatGPT Route Report\n\nExported: ${new Date().toISOString()}\n\n`;
+    md += `Total history: ${hist.length}\n\n`;
+    md += `| # | Requested | Route | Label | Status | Time | Source |\n|---|-----------|-------|-------|--------|------|--------|\n`;
+    hist.slice(0, 40).forEach((h,i) => {
+      const a = routeAssess(h);
+      md += `| ${i+1} | ${h.requestedModel || '—'} | ${a.route || h.resolvedModelSlug || h.serverModelSlug || '—'} | ${h.responseModelSlug || '—'} | ${a.label} | ${h.observedAt || ''} | ${h.source || ''} |\n`;
+    });
+    if (state.route.pow) md += `\nPoW latest: ${state.route.pow.rawHex} (${state.route.pow.decimal})\n`;
+    try { downloadText('chatgpt-route-' + new Date().toISOString().replace(/[:.]/g,'-') + '.md', md); toast('已导出 Markdown', 'success'); } catch (e) { toast(e.message || String(e), 'error'); }
+  }
+  function routeClearHistory() {
+    state.route.turns = [];
+    state.route.history = [];
+    state.route.pow = null;
+    routeSaveHistory([]);
+    routeSavePow(null);
+    try { localStorage.removeItem(ROUTE_HISTORY_KEY); localStorage.removeItem(ROUTE_POW_KEY); } catch {}
+    routeRenderFloating();
+    refreshBody();
+    toast('已清空路由历史', 'success');
+  }
+  function routeToggleEnabled(enabled) {
+    state.route.enabled = Boolean(enabled);
+    saveSettings({ routeEnabled: state.route.enabled });
+    if (state.route.enabled) {
+      routeInstallHooksIfEnabled();
+      ensureRouteFloating();
+      toast('路由检测已开启', 'success');
+    } else {
+      const host = document.getElementById(ROUTE_NS + '-host');
+      const pill = document.getElementById(ROUTE_NS + '-pill');
+      if (host) host.setAttribute('data-open','false');
+      // keep pill hidden when disabled
+      if (pill) pill.style.display = 'none';
+      toast('路由检测已关闭', 'info');
+    }
+    routeRenderFloating();
+    refreshBody();
+  }
+  // ── Floating UI ──
+  let routeFloatingReady = false;
+  let routeDrag = null;
+  function ensureRouteFloating() {
+    if (!state.route.enabled) return;
+    if (document.getElementById(ROUTE_NS + '-host') && document.getElementById(ROUTE_NS + '-pill')) return;
+    // pill
+    let pill = document.getElementById(ROUTE_NS + '-pill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = ROUTE_NS + '-pill';
+      pill.setAttribute('data-kind','unknown');
+      pill.innerHTML = '<span class="dot"></span><span class="pill-text">路由检测</span>';
+      pill.addEventListener('click', () => {
+        const host = document.getElementById(ROUTE_NS + '-host');
+        if (host) { const isOpen = host.getAttribute('data-open') === 'true'; host.setAttribute('data-open', isOpen ? 'false' : 'true'); saveSettings({ routeFloatingOpen: !isOpen }); }
+      });
+      document.body.appendChild(pill);
+      // pill draggable
+      let dragPill = null;
+      pill.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        const rect = pill.getBoundingClientRect();
+        dragPill = { startX: e.clientX, startY: e.clientY, originLeft: rect.left, originTop: rect.top, moved: false };
+        const onMove = (ev) => {
+          if (!dragPill) return;
+          const dx = ev.clientX - dragPill.startX; const dy = ev.clientY - dragPill.startY;
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragPill.moved = true;
+          if (!dragPill.moved) return;
+          const x = Math.max(8, Math.min(window.innerWidth - pill.offsetWidth - 8, dragPill.originLeft + dx));
+          const y = Math.max(8, Math.min(window.innerHeight - pill.offsetHeight - 8, dragPill.originTop + dy));
+          pill.style.left = x + 'px'; pill.style.top = y + 'px'; pill.style.right = 'auto'; pill.style.bottom = 'auto';
+        };
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          if (!dragPill) return;
+          const wasMoved = dragPill.moved;
+          dragPill = null;
+          if (wasMoved) {
+            const r = pill.getBoundingClientRect();
+            saveSettings({ routePillX: Math.round(r.left), routePillY: Math.round(r.top) });
+          }
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+      const savedX = persisted.routePillX, savedY = persisted.routePillY;
+      if (Number.isFinite(savedX) && Number.isFinite(savedY)) { pill.style.left = savedX + 'px'; pill.style.top = savedY + 'px'; pill.style.right = 'auto'; pill.style.bottom = 'auto'; }
+    }
+    // host panel
+    let host = document.getElementById(ROUTE_NS + '-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = ROUTE_NS + '-host';
+      host.setAttribute('data-open','false');
+      host.innerHTML = [
+        '<div class="rhd" id="' + ROUTE_NS + '-rhd">',
+        '  <div class="rhd-title"><span class="dot"></span><span>路由检测</span></div>',
+        '  <div class="rhd-actions">',
+        '    <button class="rhd-btn" data-route-act="copy" title="复制诊断">' + icon('copy', 12) + '</button>',
+        '    <button class="rhd-btn" data-route-act="export" title="导出 JSON">' + icon('download', 12) + '</button>',
+        '    <button class="rhd-btn" data-route-act="close" title="收起">' + icon('close', 12) + '</button>',
+        '  </div>',
+        '</div>',
+        '<div class="rbd" id="' + ROUTE_NS + '-rbd"></div>',
+      ].join('');
+      document.body.appendChild(host);
+      // draggable via header
+      const hd = host.querySelector('#' + ROUTE_NS + '-rhd');
+      if (hd) {
+        hd.addEventListener('mousedown', (e) => {
+          if (e.target.closest('.rhd-btn')) return;
+          if (e.button !== 0) return;
+          const rect = host.getBoundingClientRect();
+          routeDrag = { startX: e.clientX, startY: e.clientY, originLeft: rect.left, originTop: rect.top, moved: false };
+          const onMove = (ev) => {
+            if (!routeDrag) return;
+            const dx = ev.clientX - routeDrag.startX, dy = ev.clientY - routeDrag.startY;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) routeDrag.moved = true;
+            if (!routeDrag.moved) return;
+            const x = Math.max(8, Math.min(window.innerWidth - host.offsetWidth - 8, routeDrag.originLeft + dx));
+            const y = Math.max(8, Math.min(window.innerHeight - host.offsetHeight - 8, routeDrag.originTop + dy));
+            host.style.left = x + 'px'; host.style.top = y + 'px'; host.style.right = 'auto'; host.style.bottom = 'auto';
+          };
+          const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            if (!routeDrag) return;
+            const wasMoved = routeDrag.moved;
+            routeDrag = null;
+            if (wasMoved) {
+              const r = host.getBoundingClientRect();
+              saveSettings({ routeHostX: Math.round(r.left), routeHostY: Math.round(r.top) });
+            }
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      }
+      host.querySelectorAll('[data-route-act]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const act = btn.getAttribute('data-route-act');
+          if (act === 'close') { host.setAttribute('data-open','false'); saveSettings({ routeFloatingOpen: false }); }
+          else if (act === 'copy') routeCopyDiagnostics();
+          else if (act === 'export') routeExportJson();
+        });
+      });
+      const hx = persisted.routeHostX, hy = persisted.routeHostY;
+      if (Number.isFinite(hx) && Number.isFinite(hy)) { host.style.left = hx + 'px'; host.style.top = hy + 'px'; host.style.right = 'auto'; host.style.bottom = 'auto'; }
+      const openSaved = persisted.routeFloatingOpen;
+      if (openSaved === true) host.setAttribute('data-open','true');
+    }
+    routeFloatingReady = true;
+    routeRenderFloating();
+  }
+  function routeRenderFloating() {
+    if (!state.route.enabled) {
+      const host = document.getElementById(ROUTE_NS + '-host');
+      const pill = document.getElementById(ROUTE_NS + '-pill');
+      if (host) host.setAttribute('data-open','false');
+      if (pill) pill.style.display = 'none';
+      return;
+    }
+    ensureRouteFloating();
+    const host = document.getElementById(ROUTE_NS + '-host');
+    const pill = document.getElementById(ROUTE_NS + '-pill');
+    const rbd = document.getElementById(ROUTE_NS + '-rbd');
+    const latest = routeLatestTurn();
+    const assessInfo = latest ? routeAssess(latest) : { kind: 'unknown', label: '等待路由', route: null };
+    const kind = assessInfo.kind;
+    if (pill) {
+      pill.style.display = 'inline-flex';
+      pill.setAttribute('data-kind', kind);
+      const pillText = pill.querySelector('.pill-text');
+      if (pillText) {
+        if (!latest) pillText.textContent = '路由检测';
+        else if (kind === 'conflict') pillText.textContent = '路由冲突';
+        else if (kind === 'mismatch') pillText.textContent = `${routeModelText(latest.requestedModel)} → ${routeModelText(assessInfo.route)}`;
+        else if (assessInfo.route) pillText.textContent = routeModelText(assessInfo.route);
+        else pillText.textContent = '路由检测';
+      }
+    }
+    if (host) {
+      host.setAttribute('data-kind', kind);
+      const wasOpen = host.getAttribute('data-open') === 'true';
+      // keep open state, but update body even if closed (for next open)
+      if (rbd) {
+        const req = routeModelText(latest && latest.requestedModel);
+        const res = routeModelText(assessInfo.route || (latest && (latest.resolvedModelSlug || latest.serverModelSlug)));
+        const pow = state.route.pow ? `${state.route.pow.rawHex.slice(0,18)}… (${routeFormatPow(state.route.pow)})` : '—';
+        const hist = state.route.history || [];
+        rbd.innerHTML = [
+          '<div class="rfield"><div class="rlabel">请求模型</div><div class="rvalue">' + escapeHtml(req) + '</div></div>',
+          '<div class="rfield"><div class="rlabel">实际路由</div><div class="rvalue ' + (kind === 'mismatch' ? 'mismatch' : kind === 'conflict' ? 'conflict' : '') + '">' + escapeHtml(res) + '</div></div>',
+          '<div class="rstatus ' + kind + '">' + escapeHtml(assessInfo.label) + (latest && latest.source ? ' · ' + escapeHtml(latest.source) + ' · ' + escapeHtml(latest.phase) : '') + '</div>',
+          '<div class="rmeta"><span>PoW</span><b style="font-size:10px;overflow-wrap:anywhere">' + escapeHtml(pow) + '</b><span>更新</span><b>' + escapeHtml(latest ? routeShortTime(latest.observedAt) : '—') + '</b></div>',
+          hist.length ? '<div class="rlist"><div class="rlist-hd">最近抓包 · ' + hist.length + '</div>' + hist.slice(0,6).map(h => {
+            const a = routeAssess(h);
+            const c = a.kind === 'ok' ? '#16a34a' : a.kind === 'mismatch' ? '#f59e0b' : a.kind === 'conflict' ? '#dc2626' : '#aaa5a0';
+            return '<div class="ritem" data-hist="' + escapeHtml(h.observedAt || '') + '"><div class="ritem-top"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:' + c + '"></span>' + escapeHtml(a.label) + '</span><span>' + escapeHtml(routeShortTime(h.observedAt)) + '</span></div><div class="ritem-main">' + escapeHtml(routeModelText(h.requestedModel)) + ' → ' + escapeHtml(routeModelText(a.route || h.resolvedModelSlug || h.serverModelSlug)) + '</div></div>';
+          }).join('') + '</div>' : '<div class="rlist"><div class="rlist-hd">暂无历史</div><div style="font-size:11px;color:#aaa5a0">发送消息后自动抓包</div></div>',
+          '<div class="racts"><button class="rbtn primary" data-fact="copy">' + icon('copy', 10) + ' 复制诊断</button><button class="rbtn" data-fact="json">' + icon('download', 10) + ' JSON</button><button class="rbtn" data-fact="md">' + icon('archive', 10) + ' MD</button><button class="rbtn" data-fact="clear">' + icon('close', 10) + ' 清空</button></div>',
+        ].join('');
+        rbd.querySelectorAll('[data-fact]').forEach(b => {
+          b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const f = b.getAttribute('data-fact');
+            if (f === 'copy') routeCopyDiagnostics();
+            else if (f === 'json') routeExportJson();
+            else if (f === 'md') routeExportMarkdown();
+            else if (f === 'clear') routeClearHistory();
+          });
+        });
+      }
+    }
+  }
+
+    function renderBody() {
     if (state.activeTab === 'auth') return renderAuth();
     if (state.activeTab === 'plus') return renderPlus();
     if (state.activeTab === 'team') return renderTeam();
     if (state.activeTab === 'imp')  return renderImport();
+    if (state.activeTab === 'route') return renderRouteTab();
     return '';
   }
   function setBodyHTML(html) {
@@ -2540,7 +3529,7 @@
       '      <button class="hd-close" data-action="close" aria-label="' + escapeHtml(t('hd.close')) + '">' + icon('close', 14) + '</button>',
       '    </div>',
       '  </div>',
-      '  <div class="tabs" role="tablist">' + tabBtnHTML('auth') + tabBtnHTML('plus') + tabBtnHTML('team') + tabBtnHTML('imp') + '</div>',
+      '  <div class="tabs" role="tablist">' + tabBtnHTML('auth') + tabBtnHTML('plus') + tabBtnHTML('team') + tabBtnHTML('imp') + tabBtnHTML('route') + '</div>',
       '  <div class="bd" id="' + NS + '-body"></div>',
       '  <div class="ft">',
       '    <span><b>v' + escapeHtml(VERSION) + ' <span class="sep">·</span> ' + escapeHtml(t('ft.formats')) + ' <span class="sep">·</span> ' + escapeHtml(t('ft.regions')) + '</b></span>',
@@ -2661,6 +3650,10 @@
       case 'imp-download': return onImpDownload();
       case 'imp-download-all': return onImpDownloadAllFormats();
       case 'imp-batch-download': return onImpBatchAllAccounts();
+      case 'route-copy': return routeCopyDiagnostics();
+      case 'route-export-json': return routeExportJson();
+      case 'route-export-md': return routeExportMarkdown();
+      case 'route-clear': return routeClearHistory();
     }
   }
 
@@ -2668,6 +3661,8 @@
   //  导入 · 转换 — 事件处理
   // ──────────────────────────────────────────────────────────
   function onBodyChange(e) {
+    const rt = e.target;
+    if (rt && rt.id === NS + '-route-toggle') { routeToggleEnabled(rt.checked); return; }
     const t = e.target;
     if (!t || !t.id) return;
     if (t.id === NS + '-imp-fmt') {
@@ -3276,7 +4271,11 @@
     document.body.appendChild(fab);
   }
 
-  // INIT
+  // early route hook (document_start 尽早嗅探，不等 DOMContentLoaded)
+  try { if (state.route.enabled) routeInstallHooksIfEnabled(); } catch {}
+  try { if (state.route.enabled && !window.__CKNB_MESSAGE_HOOKED__) { window.__CKNB_MESSAGE_HOOKED__ = true; window.addEventListener('message', (e)=>{ if(e.source!==window||!e.data||e.data.source!=='cknb-route-inspector') return; const d=e.data; if(d.type==='observation'&&d.observation) routeUpsertObservation(d.observation); else if(d.type==='pow'&&d.pow){ state.route.pow=d.pow; routeSavePow(d.pow); routeRenderFloating(); if(state.activeTab==='route') refreshBody(); } }); } } catch {}
+
+    // INIT
   function init() {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init, { once: true });
@@ -3285,6 +4284,13 @@
     ensureStyle();
     ensureFab();
     ensureModal();
+    // ── route hydration ──
+    try { const hist = routeLoadHistory(); if (hist && hist.length) state.route.history = hist; } catch {}
+    try { const pow = routeLoadPow(); if (pow) state.route.pow = pow; } catch {}
+    routeInstallHooksIfEnabled();
+    ensureRouteFloating();
+    let lastRoutePath = location.pathname;
+    setInterval(() => { if (location.pathname !== lastRoutePath) { lastRoutePath = location.pathname; routeRenderFloating(); if (state.activeTab === 'route') refreshBody(); } }, 800);
     if (typeof GM_registerMenuCommand === 'function') {
       GM_registerMenuCommand('打开 CKNB ChatGPT 全能助手', openModal);
     }

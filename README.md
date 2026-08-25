@@ -2,7 +2,7 @@
 
 # ChatGPT 全能助手 · Specimen
 
-### 一键导出 9 种主流认证格式 · 反向导入 11 种来源互转 · Plus / Team 订阅链接一站生成
+### 一键导出 9 种主流认证格式 · 反向导入 11 种来源互转 · Plus / Team 订阅链接一站生成 · 路由检测悬浮（请求模型→实际模型·PoW·可导出）
 
 <br>
 
@@ -14,7 +14,7 @@
 
 <br>
 
-[![version](https://img.shields.io/badge/版本-2.5.3-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
+[![version](https://img.shields.io/badge/版本-2.5.4-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
 [![tampermonkey](https://img.shields.io/badge/Tampermonkey-required-16a34a?style=for-the-badge&labelColor=1a1614)](https://www.tampermonkey.net/)
 [![license](https://img.shields.io/badge/许可证-MIT-6b6660?style=for-the-badge&labelColor=1a1614)](./LICENSE)
 [![target](https://img.shields.io/badge/目标域名-chatgpt.com-2563eb?style=for-the-badge&labelColor=1a1614)](https://chatgpt.com)
@@ -352,6 +352,28 @@ GM_xmlhttpRequest / background SW 直连 api.stripe.com
 - ❌ `success_url` — 让 OpenAI 后端自己注入（含 `{CHECKOUT_SESSION_ID}` 占位符）
 - ❌ 请求体 `locale` — 不写入 body；印度 UPI / 巴西 PIX 仅通过 `Accept-Language` 头与 Stripe init 的 locale 参数控制支付页语言
 - ❌ `check_card_proxy` — 旧 API 字段，已过时
+
+### 4.6 路由检测悬浮（v2.5.4 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
+
+> 开启后在页面左下角出现一个**可任意拖拽**的小悬浮窗（pill + 300px 面板），实时显示 **请求模型 → 实际路由模型**，自动识别降级/冲突，附带 PoW 难度与抓包历史，支持一键导出。
+
+| 能力 | 说明 |
+|:--|:--|
+| **开关** | 设为 `05 路由检测` Tab 顶部开关，关闭即隐藏悬浮窗、停止嗅探，不影响对话 |
+| **实时嗅探** | `fetch /backend-api/f/conversation` 的 SSE 流 + `WebSocket` 的 `encoded_item` 双通道，三优先级关联 `inputMessageId → parentMessageId → conversationId`（TTL 10min，最多 32 并发） |
+| **会话重载** | 刷新已有会话时解析 `/backend-api/conversation/{id}` 的 `mapping` 回溯 `current_node` 与 `parent` 链路（最多 64 步），同样产出路由证据 |
+| **路由判定** | `resolved_model_slug` 与 `server_ste_metadata.model_slug` 双字段对照：一致→`路由一致` / 不一致→`已降级` / 双字段互相冲突→`路由冲突` |
+| **PoW** | 捕获 `/sentinel/chat-requirements` 的 `difficulty` 十六进制 → 十进制换算，悬浮与 Tab 同步显示 |
+| **悬浮窗** | Pill 显示最新 `请求→路由` 文案与状态点（绿/橙/红），面板 300px 可拖拽（header 拖动，边界 8px，阈值 3px），位置持久化到 `localStorage` |
+| **导出** | 弹窗 Tab 与悬浮面板均提供 `复制诊断`（10 行文本）、`导出 JSON`（含 `turns/history/pow`）、`导出 Markdown`（最多 40 行表格）、`清空历史`；`downloadText` 按扩展名自动选 `application/json` vs `text/markdown` |
+
+**悬浮窗交互：**
+
+- 点击 pill 展开/收起面板；面板 header 拖动可移位（自动记忆）
+- 面板内 `请求模型 / 实际路由 / 状态 / PoW / 更新时间 / 最近 6 条历史` 实时刷新
+- `复制诊断` 在无证据时 toast 提示而非静默复制占位符
+
+> 参考实现：[`Liu-Bot24/chatgpt-route-inspector`](https://github.com/Liu-Bot24/chatgpt-route-inspector) 的三层捕获（SSE/WS/Record + DOM 兜底）与字段抽取逻辑；本工具箱在油猴 `document-start` 直钩 `unsafeWindow.fetch/WebSocket`，扩展版经 `page-hook.js` 注入主世界并 `postMessage` 回传，保持与 `Specimen` 设计语言一致的亮色悬浮。
 
 ---
 
