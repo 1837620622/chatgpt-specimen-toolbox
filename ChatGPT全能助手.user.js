@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT 全能助手 · Specimen
 // @namespace    https://chatgpt.com/cknb
-// @version      2.5.5
-// @description  v2.5.5：9 出 × 11 入 · 路由检测对照 gtxx3600 上游核对（auth.json / Cockpit 扁平 / Sub2API expires 规则）。ChatGPT Session 一键导出 9 种主流格式 + 路由检测悬浮（请求模型→实际模型·PoW·可导出） + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.5：导出格式对齐上游 schema；语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
+// @version      2.5.6
+// @description  v2.5.6：9 出 × 11 入 · 路由检测对照 gtxx3600 上游核对（auth.json / Cockpit 扁平 / Sub2API expires 规则）。ChatGPT Session 一键导出 9 种主流格式 + 路由检测悬浮（请求模型→实际模型·PoW·可导出） + 反向导入 11 种来源互转 + Plus/Team 链接生成。v2.5.6：导出格式对齐上游 schema；语言切换保留教程/生成态；Plus 关键文案中英一致；区域生成防连点加固。
 // @author       传康KK-CKNB
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -29,13 +29,13 @@
   const NS = 'cknb-specimen';
   const AUTHOR = '传康KK-CKNB';
   const CONTACT_WECHAT = '1837620622';
-  const VERSION = '2.5.5';
+  const VERSION = '2.5.6';
   const SESSION_URL = '/api/auth/session';
   const CHECKOUT_URL = '/backend-api/payments/checkout';
   const AXONHUB_PLACEHOLDER = '__missing_refresh_token__';
   const SETTINGS_KEY = 'cknb-specimen.settings.v2';
 // ──────────────────────────────────────────────────────────
-  //  ROUTE INSPECTOR · 路由检测（v2.5.5 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
+  //  ROUTE INSPECTOR · 路由检测（v2.5.6 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
   // ──────────────────────────────────────────────────────────
   const ROUTE_NS = NS + '-route';
   const ROUTE_HISTORY_KEY = 'cknb-route:history:v1';
@@ -75,7 +75,12 @@
     toolName: null,
     isSearch: null,
     hadImage: null,
-    fastConvo: null
+    fastConvo: null,
+    requestBody: null,
+    requestHeaders: null,
+    requestUrl: null,
+    clientIp: null,
+    fingerprint: null
   });
 
   const EXPORT_TARGETS = [
@@ -466,6 +471,7 @@
       history: [],
       pow: null,
       floatingOpen: persisted.routeFloatingOpen === true,
+      clientIp: null,
     },
   };
 
@@ -860,6 +866,75 @@
     try { const raw = localStorage.getItem(ROUTE_POW_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
   }
   function routeSavePow(pow) { try { if (pow) localStorage.setItem(ROUTE_POW_KEY, JSON.stringify(pow)); else localStorage.removeItem(ROUTE_POW_KEY); } catch {} }
+  // ── 详细抓包：指纹 / IP / 请求体 ──
+  const ROUTE_MAX_REQUEST_BODY = 8192;
+  function collectFingerprint() {
+    try {
+      const nav = navigator;
+      const scr = window.screen || {};
+      return {
+        userAgent: nav.userAgent || null,
+        platform: nav.platform || null,
+        language: nav.language || null,
+        languages: Array.isArray(nav.languages) ? nav.languages.slice(0,5) : null,
+        timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; } })(),
+        timezoneOffset: new Date().getTimezoneOffset(),
+        screen: scr.width && scr.height ? `${scr.width}x${scr.height}` : null,
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        hardwareConcurrency: nav.hardwareConcurrency || null,
+        deviceMemory: nav.deviceMemory || null,
+        cookieEnabled: nav.cookieEnabled,
+        doNotTrack: nav.doNotTrack || null,
+        vendor: nav.vendor || null
+      };
+    } catch { return null; }
+  }
+  let routeClientIpCache = null;
+  let routeClientIpFetching = false;
+  function fetchClientIp() {
+    if (routeClientIpCache || routeClientIpFetching) return;
+    routeClientIpFetching = true;
+    const traceUrl = location.origin + '/cdn-cgi/trace';
+    const tryIpify = () => {
+      try {
+        if (typeof GM_xmlhttpRequest === 'function') {
+          GM_xmlhttpRequest({
+            method: 'GET', url: 'https://api64.ipify.org?format=json', timeout: 8000,
+            onload: (res) => { try { const j = JSON.parse(res.responseText); if (j && j.ip) { routeClientIpCache = j.ip; try { localStorage.setItem('cknb-route:ip:v1', j.ip); } catch {} } } catch {} routeClientIpFetching = false; },
+            onerror: () => { routeClientIpFetching = false; },
+            ontimeout: () => { routeClientIpFetching = false; }
+          });
+        } else {
+          fetch('https://api64.ipify.org?format=json', {method:'GET'}).then(r=>r.json()).then(j=>{ if(j&&j.ip){ routeClientIpCache=j.ip; try{localStorage.setItem('cknb-route:ip:v1', j.ip);}catch{}} routeClientIpFetching=false; }).catch(()=>{ routeClientIpFetching=false; });
+        }
+      } catch { routeClientIpFetching=false; }
+    };
+    try {
+      try { const cached = localStorage.getItem('cknb-route:ip:v1'); if (cached && /^[\d.:a-fA-F]+$/.test(cached)) { routeClientIpCache=cached; routeClientIpFetching=false; return; } } catch {}
+      fetch(traceUrl, {method:'GET', cache:'no-store'}).then(r=>r.text()).then(txt=>{
+        const m = txt.match(/^ip=(.+)$/m);
+        if (m && m[1]) { routeClientIpCache = m[1].trim(); try{localStorage.setItem('cknb-route:ip:v1', routeClientIpCache);}catch{} }
+        else tryIpify();
+        routeClientIpFetching=false;
+      }).catch(()=>{ tryIpify(); });
+    } catch { tryIpify(); }
+  }
+  function getClientIp() { return routeClientIpCache || (()=>{ try{return localStorage.getItem('cknb-route:ip:v1');}catch{return null;}})() || null; }
+  function truncateBody(raw) {
+    if (typeof raw !== 'string') return null;
+    if (raw.length <= ROUTE_MAX_REQUEST_BODY) return raw;
+    return raw.slice(0, ROUTE_MAX_REQUEST_BODY) + `\n…(truncated ${raw.length - ROUTE_MAX_REQUEST_BODY} chars)`;
+  }
+  function serializeHeaders(init) {
+    try {
+      const h = init && init.headers;
+      if (!h) return null;
+      if (h instanceof Headers) { const o={}; h.forEach((v,k)=>{ o[k]=v; }); return o; }
+      if (typeof h === 'object') return {...h};
+      return null;
+    } catch { return null; }
+  }
+
 
 
   // ── Route state helpers ──
@@ -880,7 +955,12 @@
       thinkingEffort: turn.thinkingEffort || null,
       planType: turn.planType || null,
       assessment: assessment.kind,
-      routeModel: assessment.route
+      routeModel: assessment.route,
+      requestBody: turn.requestBody || null,
+      requestHeaders: turn.requestHeaders || null,
+      requestUrl: turn.requestUrl || null,
+      clientIp: turn.clientIp || getClientIp() || null,
+      fingerprint: turn.fingerprint || null
     };
   }
   function routeNormalizeTurn(obs) {
@@ -1046,15 +1126,28 @@
         if (endpoint.kind === 'other') return downstream.call(receiver, input, init);
         const id = routeCaptureId();
         const startedAt = new Date().toISOString();
+        const _reqBodyRaw = null; // placeholder for detailed capture
+        let _detailed = { requestBody: null, requestHeaders: serializeHeaders(init), requestUrl: (input instanceof Request ? input.url : String(input)), clientIp: getClientIp(), fingerprint: collectFingerprint() };
+        // 尝试同步获取请求体用于详细记录（不影响原有解析）
         let requestFieldsPromise = Promise.resolve(routeBlankFields());
         if (endpoint.kind === 'stream') {
           requestFieldsPromise = routeGetRequestBody(input, init).then(raw => {
+            if (raw) _detailed.requestBody = truncateBody(raw);
+            else _detailed.requestBody = _detailed.requestBody || null;
             if (!raw) return routeBlankFields();
             const parsed = routeParseRequest(raw);
+            // 合并详细字段到 fields
+            const detailedFields = { ...parsed.fields, requestBody: _detailed.requestBody, requestHeaders: _detailed.requestHeaders, requestUrl: _detailed.requestUrl, clientIp: _detailed.clientIp, fingerprint: _detailed.fingerprint };
             routeRegisterPending(id, startedAt, parsed.correlation);
-            routeEmit(id, 'fetch', 'live', 'requested', parsed.fields, startedAt);
-            return parsed.fields;
+            // 同步详细字段到 pending，供 WebSocket 关联时保留
+            const _pend = routePending.get(id);
+            if (_pend) _pend.fields = { ...detailedFields };
+            routeEmit(id, 'fetch', 'live', 'requested', detailedFields, startedAt);
+            return detailedFields;
           }).catch(() => routeBlankFields());
+        } else if (endpoint.kind === 'record' || endpoint.kind === 'pow') {
+          // 即使非 stream，也记录请求信息（用于 IP/指纹关联）
+          _detailed.requestBody = null;
         }
         const response = await downstream.call(receiver, input, init);
         let clone; try { clone = response.clone(); } catch { return response; }
@@ -3014,7 +3107,7 @@
     ].join('');
   }
 
-  // 代充封控 · 购买成品号说明（v2.5.5 替换旧 PayPal 教程）
+  // 代充封控 · 购买成品号说明（v2.5.6 替换旧 PayPal 教程）
   function renderTutorialDetail() {
     return [
       '<div class="tutor-warn">',
@@ -3222,7 +3315,20 @@ function renderRouteTab() {
           '<div class="row"><label>PoW 难度（最新）</label><div class="ipt" style="font-size:11px;background:#fafaf8">' + escapeHtml(powText) + '</div></div>',
           '<div class="stat ' + (assessInfo.kind === 'ok' ? 'ok' : assessInfo.kind === 'mismatch' ? '' : assessInfo.kind === 'conflict' ? 'err' : '') + '">' + (assessInfo.kind === 'ok' ? '✅ 路由一致 · 请求与响应模型相同' : assessInfo.kind === 'mismatch' ? '⚠️ 检测到降级 · 请求 ' + escapeHtml(routeModelText(latest.requestedModel)) + ' 被路由到 ' + escapeHtml(routeModelText(assessInfo.route)) : assessInfo.kind === 'conflict' ? '❌ 路由冲突 · resolved 与 server 两个字段不一致' : '等待更多路由证据…') + '</div>',
         ].join('') : '<div class="imp-empty">暂未捕获到任何路由<br><span style="font-size:11px;color:#aaa5a0">发送一条新消息，或刷新已有会话触发会话重载检测</span></div>',
-        '<div class="lbl" style="margin-top:14px">抓包历史<span class="hint">' + historyCount + ' 条 · 最多 ' + ROUTE_MAX_HISTORY + ' · 自动过期 30 天</span></div>',
+        // ── 详细请求体 / 指纹 / IP ──
+        '<div class="lbl" style="margin-top:14px">详细请求 <span class="hint">用于判别降级原因 · 仅本地</span></div>',
+        '<div style="display:grid;gap:8px">',
+        '  <div class="row" style="margin-bottom:0"><label>客户端 IP</label><div class="ipt" style="background:#fafaf8;font-size:11px">' + escapeHtml(routeModelText(getClientIp() || state.route.clientIp || r.clientIp || '—')) + '</div></div>',
+        '  <div class="row" style="margin-bottom:0"><label>指纹（UA / 时区 / 视口）</label><div class="ipt" style="background:#fafaf8;font-size:10px;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto">' + escapeHtml(JSON.stringify(collectFingerprint(), null, 2)) + '</div></div>',
+        latest && latest.requestBody ? [
+            '<div class="lbl" style="margin-top:8px">请求体（已截断 ' + ROUTE_MAX_REQUEST_BODY + ' 字符）<span class="hint">' + (latest.requestBody ? (latest.requestBody.length + ' 字符') : '') + '</span></div>',
+            '<textarea class="out" readonly spellcheck="false" style="min-height:140px;max-height:260px">' + escapeHtml((()=>{ try{ const j=JSON.parse(latest.requestBody); return JSON.stringify(j, null, 2); }catch{ return latest.requestBody || ''; }})()) + '</textarea>',
+            '<div class="acts" style="margin-top:6px"><button class="btn sm" data-action="route-copy-body">' + icon('copy', 12) + ' <span>复制请求体</span></button><button class="btn sm ghost" data-action="route-copy-fp">' + icon('copy', 12) + ' <span>复制指纹</span></button></div>',
+          ].join('') : '<div class="imp-empty" style="margin-top:8px">暂无请求体（发送新消息后自动捕获）</div>',
+        latest && latest.requestHeaders ? '<div class="row" style="margin-top:8px"><label>请求头（部分）</label><div class="ipt" style="background:#fafaf8;font-size:10px;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto">' + escapeHtml(JSON.stringify(latest.requestHeaders, null, 2)) + '</div></div>' : '',
+        latest && latest.requestUrl ? '<div class="row" style="margin-top:8px"><label>请求 URL</label><div class="ipt" style="background:#fafaf8;font-size:10px;word-break:break-all">' + escapeHtml(latest.requestUrl || '') + '</div></div>' : '',
+        '</div>',
+                '<div class="lbl" style="margin-top:14px">抓包历史<span class="hint">' + historyCount + ' 条 · 最多 ' + ROUTE_MAX_HISTORY + ' · 自动过期 30 天</span></div>',
         r.history && r.history.length ? [
           '<div style="max-height:240px;overflow-y:auto;border:1px solid #f0eeea;border-radius:8px;background:#fafaf8;padding:8px">',
           r.history.slice(0, 12).map((h,i) => {
@@ -3275,6 +3381,17 @@ function renderRouteTab() {
       md += `| ${i+1} | ${h.requestedModel || '—'} | ${a.route || h.resolvedModelSlug || h.serverModelSlug || '—'} | ${h.responseModelSlug || '—'} | ${a.label} | ${h.observedAt || ''} | ${h.source || ''} |\n`;
     });
     if (state.route.pow) md += `\nPoW latest: ${state.route.pow.rawHex} (${state.route.pow.decimal})\n`;
+    // 追加详细请求体（便于判别降级原因）
+    if (hist.some(h=>h.requestBody)) {
+      md += `\n## 详细请求体（截断 ${ROUTE_MAX_REQUEST_BODY} 字符）\n`;
+      hist.slice(0, 10).forEach((h,i)=>{
+        if (!h.requestBody) return;
+        md += `\n### #${i+1} ${h.requestedModel||'—'} → ${routeAssess(h).route||'—'} @ ${h.observedAt||''}\n`;
+        md += `IP: ${h.clientIp||'—'} | URL: ${h.requestUrl||'—'}\n`;
+        if (h.fingerprint) md += `Fingerprint: ${JSON.stringify(h.fingerprint)}\n`;
+                md += '\n```json\n' + h.requestBody.slice(0, 2000) + '\n```\n';
+      });
+    }
     try { downloadText('chatgpt-route-' + new Date().toISOString().replace(/[:.]/g,'-') + '.md', md); toast('已导出 Markdown', 'success'); } catch (e) { toast(e.message || String(e), 'error'); }
   }
   function routeClearHistory() {
@@ -3292,6 +3409,7 @@ function renderRouteTab() {
     state.route.enabled = Boolean(enabled);
     saveSettings({ routeEnabled: state.route.enabled });
     if (state.route.enabled) {
+      fetchClientIp();
       routeInstallHooksIfEnabled();
       ensureRouteFloating();
       toast('路由检测已开启', 'success');
@@ -3682,6 +3800,8 @@ function renderRouteTab() {
       case 'route-export-json': return routeExportJson();
       case 'route-export-md': return routeExportMarkdown();
       case 'route-clear': return routeClearHistory();
+      case 'route-copy-body': { const turn = routeLatestTurn(); if (!turn || !turn.requestBody) { toast('暂无请求体', 'error'); return; } try { await copyText(turn.requestBody); toast('已复制请求体', 'success'); } catch(e){ toast(e.message||String(e),'error'); } return; }
+      case 'route-copy-fp': { try { const fp = JSON.stringify(collectFingerprint(), null, 2); await copyText(fp); toast('已复制指纹', 'success'); } catch(e){ toast(e.message||String(e),'error'); } return; }
     }
   }
 
@@ -4313,6 +4433,7 @@ function renderRouteTab() {
     ensureFab();
     ensureModal();
     // ── route hydration ──
+    try { fetchClientIp(); } catch {}
     try { const hist = routeLoadHistory(); if (hist && hist.length) state.route.history = hist; } catch {}
     try { const pow = routeLoadPow(); if (pow) state.route.pow = pow; } catch {}
     routeInstallHooksIfEnabled();

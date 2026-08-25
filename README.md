@@ -6,7 +6,7 @@
 
 <br>
 
-<sub>Tampermonkey 用户脚本 · 注入到 chatgpt.com · Session 导出本地处理 · 零依赖 · 中英双语（时区自动 + 可手动切换）· v2.5.5</sub>
+<sub>Tampermonkey 用户脚本 · 注入到 chatgpt.com · Session 导出本地处理 · 零依赖 · 中英双语（时区自动 + 可手动切换）· v2.5.6</sub>
 
 <br>
 
@@ -14,7 +14,7 @@
 
 <br>
 
-[![version](https://img.shields.io/badge/版本-2.5.5-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
+[![version](https://img.shields.io/badge/版本-2.5.6-ff5722?style=for-the-badge&labelColor=1a1614)](https://github.com/1837620622/chatgpt-specimen-toolbox/releases)
 [![tampermonkey](https://img.shields.io/badge/Tampermonkey-required-16a34a?style=for-the-badge&labelColor=1a1614)](https://www.tampermonkey.net/)
 [![license](https://img.shields.io/badge/许可证-MIT-6b6660?style=for-the-badge&labelColor=1a1614)](./LICENSE)
 [![target](https://img.shields.io/badge/目标域名-chatgpt.com-2563eb?style=for-the-badge&labelColor=1a1614)](https://chatgpt.com)
@@ -47,9 +47,9 @@
 
 | 版本 | 要点 |
 |:--|:--|
-| **v2.5.5** | 9 种导出对齐 gtxx3600 上游；Session→auth.json 字段对照写清；`sessionToken` 不再误进 `refresh_token`；增加 `tests/export-format-parity.mjs` |
-| **v2.5.5** | 安全加固（Stripe 消息桥白名单、支付链 URL 校验、自定义 token 不落盘）；Plus 双语与生成防连点 |
-| **v2.5.5** | 代充封控提示 + 成品号引导；移除 Plus 区域批量生成；中英外壳按时区切换 |
+| **v2.5.6** | 9 种导出对齐 gtxx3600 上游；Session→auth.json 字段对照写清；`sessionToken` 不再误进 `refresh_token`；增加 `tests/export-format-parity.mjs` |
+| **v2.5.6** | 安全加固（Stripe 消息桥白名单、支付链 URL 校验、自定义 token 不落盘）；Plus 双语与生成防连点 |
+| **v2.5.6** | 代充封控提示 + 成品号引导；移除 Plus 区域批量生成；中英外壳按时区切换 |
 | **v2.4.x** | Stripe init 三步法长链 + 广告拦截代理兜底；浏览器扩展版 |
 
 ---
@@ -209,7 +209,7 @@ Codex-Mgr  │  ✱   │  ✓   │  ✓  │  ✓  │   ✓  │   ✓  │  
 
 > 请求体对齐网页 Plus / Team 升级弹窗；v2.4.x 起 Stripe init 三步法长链；**v2.5.x** 起：代充封控提示、中英外壳、**仅单条生成**（后链使前链失效）。
 
-### 4.0 重要说明 · 代充封控与单条生成（v2.5.5）
+### 4.0 重要说明 · 代充封控与单条生成（v2.5.6）
 
 | 要点 | 说明 |
 |:--|:--|
@@ -353,7 +353,7 @@ GM_xmlhttpRequest / background SW 直连 api.stripe.com
 - ❌ 请求体 `locale` — 不写入 body；印度 UPI / 巴西 PIX 仅通过 `Accept-Language` 头与 Stripe init 的 locale 参数控制支付页语言
 - ❌ `check_card_proxy` — 旧 API 字段，已过时
 
-### 4.6 路由检测悬浮（v2.5.5 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
+### 4.6 路由检测悬浮（v2.5.6 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
 
 > 开启后在页面左下角出现一个**可任意拖拽**的小悬浮窗（pill + 300px 面板），实时显示 **请求模型 → 实际路由模型**，自动识别降级/冲突，附带 PoW 难度与抓包历史，支持一键导出。
 
@@ -406,13 +406,13 @@ Get-Content ChatGPT全能助手.user.js | Set-Clipboard # Windows PowerShell
 
 ### 方法 C · 浏览器扩展版（免 Tampermonkey）
 
-见目录 [`ChatGPT全能助手-扩展版/`](./ChatGPT全能助手-扩展版/) 与其中的 `安装说明.md`。功能与油猴版对齐（v2.5.5：中英双语、代充封控提示、仅单条生成、后链会使前链失效）。
+见目录 [`ChatGPT全能助手-扩展版/`](./ChatGPT全能助手-扩展版/) 与其中的 `安装说明.md`。功能与油猴版对齐（v2.5.6：中英双语、代充封控提示、仅单条生成、后链会使前链失效）。
 
 > 装载时选择的是 **`ChatGPT全能助手-扩展版/` 整个目录**（Chrome / Edge）或该目录内的 `manifest.json`（Firefox），**不是**仓库根目录。
 
 ### ⚠️ 不要用仓库根目录的遗留单文件脚本
 
-根目录下的 `plus.js` / `gpt-team.js` / `codex-auth.js` 是早期 **F12 控制台粘贴** 原型，**已过时、不再维护**，与 v2.5.5 主工具不对齐：
+根目录下的 `plus.js` / `gpt-team.js` / `codex-auth.js` 是早期 **F12 控制台粘贴** 原型，**已过时、不再维护**，与 v2.5.6 主工具不对齐：
 
 | 文件 | 现状 | 请改用 |
 |:--|:--|:--|
@@ -435,7 +435,7 @@ README 里「兼容旧版 codex-auth.js 输出」仅表示**导入器能识别�
    ║                                                               ║
    ║    ChatGPT 全能助手 · 工作台                                  ║
    ║                                                               ║
-   ║    v2.5.5  ·  作者 传康KK-CKNB  ·  微信 1837620622  · [中/EN]  ║
+   ║    v2.5.6  ·  作者 传康KK-CKNB  ·  微信 1837620622  · [中/EN]  ║
    ╟───────────────────────────────────────────────────────────────╢
    ║  01 鉴权·导出   02 Plus 订阅   03 Team 订阅   04 导入·转换     ║
    ╟───────────────────────────────────────────────────────────────╢
@@ -459,7 +459,7 @@ README 里「兼容旧版 codex-auth.js 输出」仅表示**导入器能识别�
    ║    └─────────────────────────────────────────────────────┘   ║
    ║                                                               ║
    ╠═══════════════════════════════════════════════════════════════╣
-   ║  v2.5.5 · 9 出 × 11 入 · 15 支付区  ⌘⇧K 切换  Esc 关闭        ║
+   ║  v2.5.6 · 9 出 × 11 入 · 15 支付区  ⌘⇧K 切换  Esc 关闭        ║
    ╚═══════════════════════════════════════════════════════════════╝
 ```
 
@@ -580,7 +580,7 @@ README 里「兼容旧版 codex-auth.js 输出」仅表示**导入器能识别�
 <details>
 <summary><b>auth.json 导出还需要 sessionToken 吗？报缺字段怎么办？</b></summary>
 
-**v2.5.5 起：auth.json 不再依赖 `sessionToken`。**
+**v2.5.6 起：auth.json 不再依赖 `sessionToken`。**
 
 | 需要 | 说明 |
 |:--|:--|
@@ -625,7 +625,7 @@ Codex-Manager **故意**只接受真实的 `id_token`，缺失就保留 `""` 空
 <details>
 <summary><b>为什么不能批量生成多个区域的链接？后生成的会不会把前一条弄失效？</b></summary>
 
-**会。** v2.5.5 起已移除「批量生成全部区域」「仅批量欧元区 PayPal 池」。OpenAI checkout 同一账号通常**只保留最新会话**：每生成一条新链接，**上一条往往会立刻失效**。
+**会。** v2.5.6 起已移除「批量生成全部区域」「仅批量欧元区 PayPal 池」。OpenAI checkout 同一账号通常**只保留最新会话**：每生成一条新链接，**上一条往往会立刻失效**。
 
 正确用法：
 1. 只点**一个**区域卡片（或自定义 country/currency）生成
@@ -651,7 +651,7 @@ Codex-Manager **故意**只接受真实的 `id_token`，缺失就保留 `""` 空
 <details>
 <summary><b>界面语言如何切换？会不会全界面都是双语？</b></summary>
 
-**v2.5.5+**：外壳 chrome（标题 / Tab / 页脚 / FAB）、Plus「代充封控」横幅/详情、以及 Plus **区域标签与生成态提示** 支持中英双语。
+**v2.5.6+**：外壳 chrome（标题 / Tab / 页脚 / FAB）、Plus「代充封控」横幅/详情、以及 Plus **区域标签与生成态提示** 支持中英双语。
 
 - **自动**：中文时区（含上海/港/澳/台/新加坡等）→ 中文；否则看浏览器 `zh*` 语言；再否则英文
 - **手动**：面板右上角语言按钮切换，写入 localStorage 后优先于时区
@@ -712,9 +712,9 @@ PingFang SC → HarmonyOS Sans SC → Noto Sans SC → Hiragino Sans GB → 系�
 - [ ] 导出格式自定义模板（用户自己写 JS 函数）
 - [ ] Codex-Manager 真实 `id_token` 自动刷新（需要 Auth0 PKCE 流程）
 - [x] 浏览器扩展版（Manifest V3，免装 Tampermonkey）—— v2.4.0 已实现
-- [x] 中英双语（外壳 chrome + Plus 代充封控横幅/详情）+ 按时区自动切换（可手动覆盖）—— v2.5.5 已实现
-- [x] 代充封控提示改为购买成品号；移除 Plus 区域批量生成（仅单条，后链使前链失效）—— v2.5.5+ 已实现
-- [x] 9 种导出格式对齐 gtxx3600 上游 + Session→auth.json 对照文档 + parity 测试 —— v2.5.5 已实现
+- [x] 中英双语（外壳 chrome + Plus 代充封控横幅/详情）+ 按时区自动切换（可手动覆盖）—— v2.5.6 已实现
+- [x] 代充封控提示改为购买成品号；移除 Plus 区域批量生成（仅单条，后链使前链失效）—— v2.5.6+ 已实现
+- [x] 9 种导出格式对齐 gtxx3600 上游 + Session→auth.json 对照文档 + parity 测试 —— v2.5.6 已实现
 - [ ] 全量界面 i18n（Auth / Plus 表单 / Team / 导入转换正文）
 - [ ] 国际化扩展（ja / ko）
 

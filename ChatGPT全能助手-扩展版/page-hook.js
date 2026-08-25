@@ -1,4 +1,4 @@
-// ChatGPT 路由检测 · Page Hook (v2.5.5)
+// ChatGPT 路由检测 · Page Hook (v2.5.6)
 // 在页面主世界运行，直接钩 fetch/WebSocket 并通过 postMessage 把观测回传给 content script
 (() => {
   if (window.__CKNB_ROUTE_HOOK__) return;
@@ -14,10 +14,20 @@
   const EMPTY = Object.freeze({
     requestedModel: null, responseModelSlug: null, defaultModelSlug: null,
     resolvedModelSlug: null, serverModelSlug: null, domModelSlug: null,
+    requestBody: null, requestHeaders: null, requestUrl: null, clientIp: null, fingerprint: null,
     thinkingEffort: null, planType: null, requestId: null, conversationId: null,
     conversationMode: null, selectedSourcesCount: null, toolInvoked: null,
     toolName: null, isSearch: null, hadImage: null, fastConvo: null
   });
+
+  const ROUTE_MAX_REQUEST_BODY = 8192;
+  function collectFingerprint(){ try{ const nav=navigator; const scr=window.screen||{}; return {userAgent:nav.userAgent||null, platform:nav.platform||null, language:nav.language||null, languages:Array.isArray(nav.languages)?nav.languages.slice(0,5):null, timezone:(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||null;}catch{return null;}})(), timezoneOffset:new Date().getTimezoneOffset(), screen:scr.width&&scr.height?`${scr.width}x${scr.height}`:null, viewport:`${window.innerWidth}x${window.innerHeight}`, hardwareConcurrency:nav.hardwareConcurrency||null, deviceMemory:nav.deviceMemory||null, cookieEnabled:nav.cookieEnabled, doNotTrack:nav.doNotTrack||null, vendor:nav.vendor||null}; }catch{return null;} }
+  let routeClientIpCache=null; let routeClientIpFetching=false;
+  function fetchClientIp(){ if(routeClientIpCache||routeClientIpFetching) return; routeClientIpFetching=true; const traceUrl=location.origin+'/cdn-cgi/trace'; const tryIpify=()=>{ try{ fetch('https://api64.ipify.org?format=json',{method:'GET'}).then(r=>r.json()).then(j=>{if(j&&j.ip){routeClientIpCache=j.ip; try{localStorage.setItem('cknb-route:ip:v1',j.ip);}catch{}} routeClientIpFetching=false;}).catch(()=>{routeClientIpFetching=false;}); }catch{routeClientIpFetching=false;} }; try{ try{const cached=localStorage.getItem('cknb-route:ip:v1'); if(cached&&/^[\d.:a-fA-F]+$/.test(cached)){routeClientIpCache=cached; routeClientIpFetching=false; return;}}catch{} fetch(traceUrl,{method:'GET',cache:'no-store'}).then(r=>r.text()).then(txt=>{const m=txt.match(/^ip=(.+)$/m); if(m&&m[1]){routeClientIpCache=m[1].trim(); try{localStorage.setItem('cknb-route:ip:v1',routeClientIpCache);}catch{}} else tryIpify(); routeClientIpFetching=false;}).catch(()=>{tryIpify();}); }catch{tryIpify();} }
+  function getClientIp(){ return routeClientIpCache || (()=>{try{return localStorage.getItem('cknb-route:ip:v1');}catch{return null;}})() || null; }
+  function truncateBody(raw){ if(typeof raw!=='string') return null; if(raw.length<=ROUTE_MAX_REQUEST_BODY) return raw; return raw.slice(0,ROUTE_MAX_REQUEST_BODY)+`\n…(truncated ${raw.length-ROUTE_MAX_REQUEST_BODY} chars)`; }
+  function serializeHeaders(init){ try{ const h=init&&init.headers; if(!h) return null; if(h instanceof Headers){ const o={}; h.forEach((v,k)=>{o[k]=v;}); return o; } if(typeof h==='object') return {...h}; return null; }catch{return null;} }
+  try{ fetchClientIp(); }catch{}
   const MAX_STREAM = 1024*1024, MAX_RECORD=8*1024*1024, MAX_POW=256*1024, MAX_WS_FRAME=2*1024*1024, MAX_WS_ITEM=1024*1024;
   const CAPTURE_TTL=10*60*1000;
   function asRecord(v){return v&&typeof v==='object'&&!Array.isArray(v)?v:null}
@@ -135,11 +145,13 @@
       const ep=classify(url);
       if(ep.kind==='other') return downstream.call(receiver,input,init);
       const id=captureId(),startedAt=new Date().toISOString();
+      const _detailed={requestBody:null, requestHeaders:serializeHeaders(init), requestUrl:(input instanceof Request?input.url:String(input)), clientIp:getClientIp(), fingerprint:collectFingerprint()};
       let reqPromise=Promise.resolve(blank());
       if(ep.kind==='stream'){
         reqPromise=getBody(input,init).then(raw=>{
+          if(raw) _detailed.requestBody=truncateBody(raw);
           if(!raw) return blank();
-          const p=parseRequest(raw); register(id,startedAt,p.correlation); emit(id,'fetch','live','requested',p.fields,startedAt); return p.fields;
+          const p=parseRequest(raw); const detailedFields={...p.fields, requestBody:_detailed.requestBody, requestHeaders:_detailed.requestHeaders, requestUrl:_detailed.requestUrl, clientIp:_detailed.clientIp, fingerprint:_detailed.fingerprint}; register(id,startedAt,p.correlation); const _pend=pending.get(id); if(_pend) _pend.fields={...detailedFields}; emit(id,'fetch','live','requested',detailedFields,startedAt); return detailedFields;
         }).catch(()=>blank());
       }
       const resp=await downstream.call(receiver,input,init);
