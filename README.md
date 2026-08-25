@@ -47,9 +47,12 @@
 
 | 版本 | 要点 |
 |:--|:--|
-| **v2.5.6** | 9 种导出对齐 gtxx3600 上游；Session→auth.json 字段对照写清；`sessionToken` 不再误进 `refresh_token`；增加 `tests/export-format-parity.mjs` |
-| **v2.5.6** | 安全加固（Stripe 消息桥白名单、支付链 URL 校验、自定义 token 不落盘）；Plus 双语与生成防连点 |
-| **v2.5.6** | 代充封控提示 + 成品号引导；移除 Plus 区域批量生成；中英外壳按时区切换 |
+| **v2.5.6** | 详细抓包（请求体 8192 截断 / IP / 指纹 / 请求头 / URL）+ 导出 Markdown 详情；`pending` 详细透传至 WS |
+| **v2.5.5** | 悬浮默认收起 + 锚定到 pill 正上方 + 响应式收敛（`min(300px, calc(100vw - 32px))`），`__CKNB_MESSAGE_HOOKED__` 防重 |
+| **v2.5.4** | 路由检测悬浮（`Liu-Bot24` 三层嗅探 + `05` Tab 开关 + 可拖拽 pill/host + 复制/JSON/Markdown/清空） |
+| **v2.5.3** | 9 种导出对齐 gtxx3600 上游；Session→auth.json 字段对照写清；`sessionToken` 不再误进 `refresh_token`；`tests/export-format-parity.mjs` |
+| **v2.5.2** | 安全加固（Stripe 消息桥白名单、PPT URL 校验、自定义 token 不落盘）；Plus 双语与生成防连点 |
+| **v2.5.1** | 代充封控提示 + 成品号引导；移除 Plus 区域批量生成；中英外壳按时区切换 |
 | **v2.4.x** | Stripe init 三步法长链 + 广告拦截代理兜底；浏览器扩展版 |
 
 ---
@@ -355,7 +358,7 @@ GM_xmlhttpRequest / background SW 直连 api.stripe.com
 
 ### 4.6 路由检测悬浮（v2.5.6 新增 · 融合 Liu-Bot24/chatgpt-route-inspector + Minimal 三层嗅探）
 
-> 开启后在页面左下角出现一个**可任意拖拽**的小悬浮窗（pill + 300px 面板），实时显示 **请求模型 → 实际路由模型**，自动识别降级/冲突，附带 PoW 难度与抓包历史，支持一键导出。
+> 开启后在页面左下角出现一个**可任意拖拽**的小悬浮窗（`pill` + `min(300px, calc(100vw - 32px))` 面板，锚定到 `pill` 正上方），实时显示 **请求模型 → 实际路由模型**，自动识别降级/冲突，附带 PoW 难度、**详细请求体/IP/指纹**与抓包历史，支持一键导出。
 
 | 能力 | 说明 |
 |:--|:--|
@@ -364,8 +367,9 @@ GM_xmlhttpRequest / background SW 直连 api.stripe.com
 | **会话重载** | 刷新已有会话时解析 `/backend-api/conversation/{id}` 的 `mapping` 回溯 `current_node` 与 `parent` 链路（最多 64 步），同样产出路由证据 |
 | **路由判定** | `resolved_model_slug` 与 `server_ste_metadata.model_slug` 双字段对照：一致→`路由一致` / 不一致→`已降级` / 双字段互相冲突→`路由冲突` |
 | **PoW** | 捕获 `/sentinel/chat-requirements` 的 `difficulty` 十六进制 → 十进制换算，悬浮与 Tab 同步显示 |
-| **悬浮窗** | Pill 显示最新 `请求→路由` 文案与状态点（绿/橙/红），面板 300px 可拖拽（header 拖动，边界 8px，阈值 3px），位置持久化到 `localStorage` |
-| **导出** | 弹窗 Tab 与悬浮面板均提供 `复制诊断`（10 行文本）、`导出 JSON`（含 `turns/history/pow`）、`导出 Markdown`（最多 40 行表格）、`清空历史`；`downloadText` 按扩展名自动选 `application/json` vs `text/markdown` |
+| **详细抓包** | 每条请求快照 `requestBody(8192截断)`/`requestHeaders`/`requestUrl`/`clientIp`/`fingerprint(UA/platform/language/timezone/screen/viewport/hardwareConcurrency)`，`pending` 透传至 `WS`，`history` 持久化 |
+| **悬浮窗** | Pill 显示最新 `请求→路由` 文案与状态点（绿/橙/红），面板 `min(300px, calc(100vw - 32px))` 可拖拽（header 拖动，边界 8px，阈值 3px，锚定 pill 正上方），位置持久化到 `localStorage` |
+| **导出** | 弹窗 Tab 与悬浮面板均提供 `复制诊断`（10 行文本）、`复制请求体/指纹`、`导出 JSON`（含 `turns/history/pow` 全量详细）、`导出 Markdown`（40 行表格 + 10 条请求体详情）、`清空历史`；`downloadText` 按扩展名自动选 `application/json` vs `text/markdown` |
 
 **悬浮窗交互：**
 
